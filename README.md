@@ -36,7 +36,7 @@
 ## 使用方法
 
 1.  **設定模型:**
-    在 `main.py` (或其他設定檔) 中，修改 `CHOSEN_MODEL` 變數來選擇您想使用的 Hugging Face 模型 (例如 `"gpt2-medium"`, `"facebook/opt-1.3b"`)。
+    在 `config.py` 中，修改 `CHOSEN_MODEL` 變數來選擇您想使用的 Hugging Face 模型 (例如 `"gpt2-medium"`, `"facebook/opt-1.3b"`)。
 
 2.  **執行主腳本:**
     ```bash

@@ -1,0 +1,1 @@
+CHOSEN_MODEL = "facebook/opt-1.3b"

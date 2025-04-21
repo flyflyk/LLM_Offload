@@ -1,9 +1,10 @@
 import torch
 import time
 from model_loader import load_model
+from config import CHOSEN_MODEL
 
 # --- Step 1: Load the model ---
-CHOSEN_MODEL = "facebook/opt-1.3b"
+
 model, tokenizer, device = load_model(model_name=CHOSEN_MODEL)
 
 # --- Step 2: Check if loading was successful ---
