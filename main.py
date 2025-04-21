@@ -1,7 +1,7 @@
 import torch
 import time
 from model_loader import load_model
-from config import CHOSEN_MODEL
+from config import CHOSEN_MODEL, MAX_TOKENS
 
 # --- Step 1: Load the model ---
 
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     # Iterate through prompts
     for i, p in enumerate(prompt_list):
-        _, latency = generate(p, max_new_tokens=40)
+        _, latency = generate(p, max_new_tokens=MAX_TOKENS)
         # Record latency if valid
         if latency is not None and latency != float('inf'):
             latencies[f"Prompt {i+1}"] = latency
