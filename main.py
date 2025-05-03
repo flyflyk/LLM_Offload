@@ -141,14 +141,11 @@ def main():
     print(f"[main] Model '{CHOSEN_MODEL}' loaded successfully on device: {device}.")
     if model_vram_info:
          print(f"[main] Initial Model VRAM - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Model Footprint: {model_vram_info['model_footprint_gb']:.2f} GB")
-
-    # 3. Define the list of prompts for inference
-    
     all_results = {}
     if model_vram_info and device == torch.device("cuda"):
         all_results["model_vram"] = model_vram_info
 
-    # 4. Run Inference for each prompt
+    # 3. Run Inference for each prompt
     print("\n--- [main] Running Measured Inference Examples ---")
     for i, prompt in enumerate(PROMPT_LIST):
         prompt_label = f"Prompt {i+1}"
@@ -167,7 +164,7 @@ def main():
         all_results[prompt_label] = prompt_metrics
 
 
-    # 5. Print Final Summary
+    # 4. Print Final Summary
     _print_summary(all_results)
     print("\n--- [main] Execution Finished ---")
 
