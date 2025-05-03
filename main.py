@@ -10,10 +10,12 @@ def _run_inference(
     tokenizer,
     device: torch.device,
     max_new_tokens: int = 50
-) -> tuple[str | None, float | None]:
+) -> tuple[str | None, float | None, dict | None]:
     if not prompt:
         print("[main] Prompt cannot be empty.")
-        return None, None
+        return None, None, None
+
+    inference_vram_info = {}
 
     try:
         print(f"\n--- [main] Generating for prompt: '{prompt}' ---")
@@ -23,10 +25,16 @@ def _run_inference(
         input_ids = inputs.input_ids
         attention_mask = inputs.attention_mask
 
-        # Record start time for generation
-        start_gen_time = time.time()
+        # 2. VRAM Monitor：Before inference
+        if device == torch.device("cuda"):
+            torch.cuda.synchronize()
+            start_mem_allocated = torch.cuda.memory_allocated(device)
+            start_mem_reserved = torch.cuda.memory_reserved(device)
+            torch.cuda.reset_peak_memory_stats(device)
+            print(f"[main] VRAM Before Generate - Allocated: {start_mem_allocated / (1024**3):.2f} GB, Reserved: {start_mem_reserved / (1024**3):.2f} GB")
 
-        # 2. Generate with the model
+        # 3. Generate with the model
+        start_gen_time = time.time()
         with torch.no_grad():
             generation_output = model.generate(
                 input_ids=input_ids,
@@ -38,20 +46,33 @@ def _run_inference(
                 top_k=50,
             )
 
-        # Record end time for generation
+        if device == torch.device("cuda"):
+            torch.cuda.synchronize()
         end_gen_time = time.time()
         total_gen_time = end_gen_time - start_gen_time
 
-        # 3. Decode the generated token IDs
+        # 4. VRAM monitor：After inference
+        if device == torch.device("cuda"):
+             peak_mem_allocated = torch.cuda.max_memory_allocated(device)
+             peak_mem_reserved = torch.cuda.max_memory_reserved(device)
+             end_mem_allocated = torch.cuda.memory_allocated(device)
+             print(f"[main] VRAM After Generate - Allocated: {end_mem_allocated / (1024**3):.2f} GB")
+             print(f"[main] VRAM Peak During Generate - Allocated: {peak_mem_allocated / (1024**3):.2f} GB, Reserved: {peak_mem_reserved / (1024**3):.2f} GB")
+             inference_vram_info = {
+                 "peak_allocated_gb": peak_mem_allocated / (1024**3),
+                 "peak_reserved_gb": peak_mem_reserved / (1024**3),
+                 "allocated_increase_gb": (peak_mem_allocated - start_mem_allocated) / (1024**3)
+             }
+
+        # 5. Decode the generated token IDs
         generated_ids = generation_output[0]
         generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
 
-        # 4. Calculate Token Latency
+        # 6. Calculate Token Latency
         input_token_count = input_ids.shape[1]
         output_token_count = generated_ids.shape[-1]
         new_tokens_generated = output_token_count - input_token_count
-
-        token_latency = float('inf') # Default to infinity if no new tokens
+        token_latency = None
         if new_tokens_generated > 0:
             token_latency = total_gen_time / new_tokens_generated
             print(f"[main] Generated {new_tokens_generated} new tokens.")
@@ -61,27 +82,47 @@ def _run_inference(
             print(f"[main] No new tokens were generated. Input length: {input_token_count}, Output length: {output_token_count}")
             print(f"[main] Processing time (no new tokens): {total_gen_time:.4f} seconds.")
 
-
         print(f"[main] Full generated text:\n{generated_text}")
         print("-" * 30)
 
-        return generated_text, token_latency
+        return generated_text, token_latency, inference_vram_info
 
     except Exception as e:
         print(f"[main] An error occurred during generation: {e}")
         traceback.print_exc()
-        return None, None
+        return None, None, None
 
-def _print_latency_summary(results: dict):
-    print("\n--- [main] Latency Summary (seconds/token) ---")
-    if results:
-        for name, lat in results.items():
-            if lat is not None and lat != float('inf'):
-                print(f"{name}: {lat:.4f}")
-            else:
-                print(f"{name}: No valid latency data")
-    else:
-        print("[main] No latency data collected.")
+def _print_summary(results: dict):
+    print("\n--- [main] Results Summary ---")
+    if not results:
+        print("[main] No results collected.")
+        return
+
+    if "model_vram" in results:
+         print("Model VRAM Footprint:")
+         for key, value in results["model_vram"].items():
+             if "gb" in key:
+                 print(f"  {key}: {value:.4f} GB")
+         print("-" * 15)
+
+    print("Inference Metrics per Prompt:")
+    for prompt_label, metrics in results.items():
+         if prompt_label == "model_vram": continue
+
+         print(f"{prompt_label}:")
+         latency = metrics.get("latency")
+         if latency is not None and latency != float('inf'):
+             print(f"  Latency (sec/token): {latency:.4f}")
+         else:
+             print(f"  Latency: No valid data")
+
+         inf_vram = metrics.get("inference_vram")
+         if inf_vram:
+             print(f"  Inference Peak VRAM Allocated Increase: {inf_vram.get('allocated_increase_gb', 'N/A'):.4f} GB")
+             print(f"  Inference Peak VRAM Allocated Total: {inf_vram.get('peak_allocated_gb', 'N/A'):.4f} GB")
+         else:
+              print(f"  Inference VRAM: No data (likely CPU)")
+
     print("-" * 30)
 
 
@@ -91,14 +132,15 @@ def main():
 
     # 1. Load the model, tokenizer, and device
     print(f"[main] Loading model '{CHOSEN_MODEL}'...")
-    model, tokenizer, device = load_model(model_name=CHOSEN_MODEL)
+    model, tokenizer, device, model_vram_info = load_model(model_name=CHOSEN_MODEL)
 
     # 2. Check if loading was successful
     if model is None or tokenizer is None or device is None:
         print("[main] Failed to load model or tokenizer. Exiting script.")
         return
-
     print(f"[main] Model '{CHOSEN_MODEL}' loaded successfully on device: {device}.")
+    if model_vram_info:
+         print(f"[main] Initial Model VRAM - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Model Footprint: {model_vram_info['model_footprint_gb']:.2f} GB")
 
     # 3. Define the list of prompts for inference
     prompt_list = [
@@ -107,27 +149,31 @@ def main():
         "Artificial intelligence is",
         "To be or not to be, that"
     ]
-
-    latency_results = {}
+    all_results = {}
+    if model_vram_info and device == torch.device("cuda"):
+        all_results["model_vram"] = model_vram_info
 
     # 4. Run Inference for each prompt
-    print("\n--- [main] Running Inference Examples ---")
+    print("\n--- [main] Running Measured Inference Examples ---")
     for i, prompt in enumerate(prompt_list):
         prompt_label = f"Prompt {i+1}"
-        generated_text, token_latency = _run_inference(
+        generated_text, token_latency, inference_vram = _run_inference(
             prompt=prompt,
             model=model,
             tokenizer=tokenizer,
             device=device,
             max_new_tokens=MAX_TOKENS
         )
+        prompt_metrics = {}
         if token_latency is not None:
-             latency_results[prompt_label] = token_latency
+             prompt_metrics["latency"] = token_latency
+        if inference_vram and device == torch.device("cuda"):
+             prompt_metrics["inference_vram"] = inference_vram
+        all_results[prompt_label] = prompt_metrics
 
 
     # 5. Print Final Summary
-    _print_latency_summary(latency_results)
-
+    _print_summary(all_results)
     print("\n--- [main] Execution Finished ---")
 
 
