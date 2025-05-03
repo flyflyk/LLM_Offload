@@ -4,7 +4,7 @@ import traceback
 from model_loader import load_model
 from config import CHOSEN_MODEL, MAX_TOKENS
 
-def _run_single_prompt_inference(
+def _run_inference(
     prompt: str,
     model: torch.nn.Module,
     tokenizer,
@@ -19,7 +19,7 @@ def _run_single_prompt_inference(
         print(f"\n--- [main] Generating for prompt: '{prompt}' ---")
 
         # 1. Tokenize the input
-        inputs = tokenizer(prompt, return_tensors='pt').to(device) # Tokenize and move inputs to device
+        inputs = tokenizer(prompt, return_tensors='pt').to(device)
         input_ids = inputs.input_ids
         attention_mask = inputs.attention_mask
 
@@ -76,7 +76,6 @@ def _print_latency_summary(results: dict):
     print("\n--- [main] Latency Summary (seconds/token) ---")
     if results:
         for name, lat in results.items():
-            # Check if latency is valid before printing
             if lat is not None and lat != float('inf'):
                 print(f"{name}: {lat:.4f}")
             else:
@@ -115,7 +114,7 @@ def main():
     print("\n--- [main] Running Inference Examples ---")
     for i, prompt in enumerate(prompt_list):
         prompt_label = f"Prompt {i+1}"
-        generated_text, token_latency = _run_single_prompt_inference(
+        generated_text, token_latency = _run_inference(
             prompt=prompt,
             model=model,
             tokenizer=tokenizer,

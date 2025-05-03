@@ -1,2 +1,2 @@
-CHOSEN_MODEL = "facebook/opt-1.3b"
+CHOSEN_MODEL = "gpt2-xl"
 MAX_TOKENS = 40

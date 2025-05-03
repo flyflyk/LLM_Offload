@@ -4,10 +4,10 @@ import time
 
 def load_model(model_name: str = "gpt2-medium"):
     print(f"\n--- [model_loader] Attempting to load model: {model_name} ---")
-    start_load_time = time.time() # Record start time
+    start_load_time = time.time()
 
     # 1. Determine device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") # Set device to "cuda" if available, otherwise "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[model_loader] Using device: {device}")
 
     try:
@@ -19,7 +19,6 @@ def load_model(model_name: str = "gpt2-medium"):
         model_kwargs = {}
         if device == torch.device("cuda"):
             try:
-                # Check GPU compute capability
                 compute_capability = torch.cuda.get_device_capability(device)
                 if compute_capability[0] >= 7: # Compute capability 7.0 and above support float16
                     print("[model_loader] GPU supports float16. Using torch_dtype=torch.float16.")
