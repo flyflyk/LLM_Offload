@@ -2,7 +2,7 @@ import torch
 import time
 import traceback
 from model_loader import load_model
-from config import CHOSEN_MODEL, MAX_TOKENS
+from config import CHOSEN_MODEL, MAX_TOKENS, PROMPT_LIST
 
 def _run_inference(
     prompt: str,
@@ -143,19 +143,14 @@ def main():
          print(f"[main] Initial Model VRAM - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Model Footprint: {model_vram_info['model_footprint_gb']:.2f} GB")
 
     # 3. Define the list of prompts for inference
-    prompt_list = [
-        "Once upon a time",
-        "The recipe for a perfect pizza starts with",
-        "Artificial intelligence is",
-        "To be or not to be, that"
-    ]
+    
     all_results = {}
     if model_vram_info and device == torch.device("cuda"):
         all_results["model_vram"] = model_vram_info
 
     # 4. Run Inference for each prompt
     print("\n--- [main] Running Measured Inference Examples ---")
-    for i, prompt in enumerate(prompt_list):
+    for i, prompt in enumerate(PROMPT_LIST):
         prompt_label = f"Prompt {i+1}"
         generated_text, token_latency, inference_vram = _run_inference(
             prompt=prompt,
