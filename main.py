@@ -2,7 +2,7 @@ import torch
 import time
 import traceback
 from model_loader import load_model
-from config import CHOSEN_MODEL, MAX_TOKENS
+from config import CHOSEN_MODEL, MAX_TOKENS, ENABLE_STREAMING, DEVICE
 
 def _run_inference(
     prompt: str,
@@ -16,25 +16,41 @@ def _run_inference(
         return None, None, None
 
     inference_vram_info = {}
+    is_cuda = (device == torch.device("cuda"))
 
     try:
         print(f"\n--- [main] Generating for prompt: '{prompt}' ---")
 
         # 1. Tokenize the input
-        inputs = tokenizer(prompt, return_tensors='pt').to(device)
+        inputs = tokenizer(prompt, return_tensors='pt')
+        print("[main] Inputs tokenized on CPU.")
+
+        try:
+            input_embeddings_device = model.get_input_embeddings().weight.device
+            print(f"[main] Model expects inputs on device: {input_embeddings_device}")
+        except AttributeError:
+            print("[main] Warning: Could not determine input embedding device automatically. Using config DEVICE.")
+            input_embeddings_device = device
+
+        inputs = inputs.to(input_embeddings_device)
         input_ids = inputs.input_ids
         attention_mask = inputs.attention_mask
+        print(f"[main] Inputs moved to device: {input_ids.device}")
 
         # 2. VRAM Monitor：Before inference
-        if device == torch.device("cuda"):
+        start_mem_allocated = 0
+        if is_cuda:
             torch.cuda.synchronize()
             start_mem_allocated = torch.cuda.memory_allocated(device)
             start_mem_reserved = torch.cuda.memory_reserved(device)
             torch.cuda.reset_peak_memory_stats(device)
             print(f"[main] VRAM Before Generate - Allocated: {start_mem_allocated / (1024**3):.2f} GB, Reserved: {start_mem_reserved / (1024**3):.2f} GB")
-
+        
         # 3. Generate with the model
+        if is_cuda:
+            torch.cuda.synchronize()
         start_gen_time = time.time()
+
         with torch.no_grad():
             generation_output = model.generate(
                 input_ids=input_ids,
@@ -46,26 +62,27 @@ def _run_inference(
                 top_k=50,
             )
 
-        if device == torch.device("cuda"):
+        if is_cuda:
             torch.cuda.synchronize()
         end_gen_time = time.time()
         total_gen_time = end_gen_time - start_gen_time
 
         # 4. VRAM monitor：After inference
-        if device == torch.device("cuda"):
+        if is_cuda:
              peak_mem_allocated = torch.cuda.max_memory_allocated(device)
              peak_mem_reserved = torch.cuda.max_memory_reserved(device)
              end_mem_allocated = torch.cuda.memory_allocated(device)
              print(f"[main] VRAM After Generate - Allocated: {end_mem_allocated / (1024**3):.2f} GB")
              print(f"[main] VRAM Peak During Generate - Allocated: {peak_mem_allocated / (1024**3):.2f} GB, Reserved: {peak_mem_reserved / (1024**3):.2f} GB")
+             allocated_increase = peak_mem_allocated - start_mem_allocated
              inference_vram_info = {
                  "peak_allocated_gb": peak_mem_allocated / (1024**3),
                  "peak_reserved_gb": peak_mem_reserved / (1024**3),
-                 "allocated_increase_gb": (peak_mem_allocated - start_mem_allocated) / (1024**3)
+                 "allocated_increase_gb": allocated_increase / (1024**3)
              }
 
         # 5. Decode the generated token IDs
-        generated_ids = generation_output[0]
+        generated_ids = generation_output[0].cpu()
         generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
 
         # 6. Calculate Token Latency
@@ -128,32 +145,33 @@ def _print_summary(results: dict):
 
 # --- Main execution function ---
 def main():
-    print("--- [main] Starting Execution ---")
+    mode = "Streaming (Disk Offload)" if ENABLE_STREAMING else "Baseline (Full Load)"
+    print(f"--- [main] Starting Execution ({mode}) ---")
 
-    # 1. Load the model, tokenizer, and device
+    # 1. Load model and tokenizer
     print(f"[main] Loading model '{CHOSEN_MODEL}'...")
     model, tokenizer, device, model_vram_info = load_model(model_name=CHOSEN_MODEL)
-
-    # 2. Check if loading was successful
     if model is None or tokenizer is None or device is None:
         print("[main] Failed to load model or tokenizer. Exiting script.")
         return
-    print(f"[main] Model '{CHOSEN_MODEL}' loaded successfully on device: {device}.")
-    if model_vram_info:
-         print(f"[main] Initial Model VRAM - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Model Footprint: {model_vram_info['model_footprint_gb']:.2f} GB")
-
-    # 3. Define the list of prompts for inference
-    prompt_list = [
-        "Once upon a time",
-        "The recipe for a perfect pizza starts with",
-        "Artificial intelligence is",
-        "To be or not to be, that"
-    ]
-    all_results = {}
+    print(f"[main] Model '{CHOSEN_MODEL}' loaded. Main computation device: {device}.")
     if model_vram_info and device == torch.device("cuda"):
+         print(f"[main] Initial Model VRAM (After Load) - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Initial Increase: {model_vram_info['model_footprint_gb']:.2f} GB")
+
+    # 2. Define a list of prompts
+    prompt_list = [
+        "Once upon a time, in a land far, far away",
+        "The secret ingredient to the world's best chocolate cake is",
+        "Explain the concept of quantum entanglement in simple terms:",
+        "Write a short poem about a rainy day in the city.",
+    ]
+
+    all_results = {}
+    is_cuda = (device == torch.device("cuda"))
+    if model_vram_info and is_cuda:
         all_results["model_vram"] = model_vram_info
 
-    # 4. Run Inference for each prompt
+    # 3. Inference for each prompt
     print("\n--- [main] Running Measured Inference Examples ---")
     for i, prompt in enumerate(prompt_list):
         prompt_label = f"Prompt {i+1}"
@@ -167,14 +185,14 @@ def main():
         prompt_metrics = {}
         if token_latency is not None:
              prompt_metrics["latency"] = token_latency
-        if inference_vram and device == torch.device("cuda"):
+        if inference_vram and is_cuda:
              prompt_metrics["inference_vram"] = inference_vram
         all_results[prompt_label] = prompt_metrics
 
 
-    # 5. Print Final Summary
+    # 4. Print summary
     _print_summary(all_results)
-    print("\n--- [main] Execution Finished ---")
+    print(f"\n--- [main] Execution Finished ({mode}) ---")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,3 @@
 transformers
-accelerate
-sentencepiece
+accelerate>=0.20.0
+safetensors
