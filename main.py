@@ -2,7 +2,7 @@ import torch
 import time
 import traceback
 from model_loader import load_model
-from config import CHOSEN_MODEL, MAX_TOKENS, ENABLE_STREAMING, DEVICE
+from config import CHOSEN_MODEL, MAX_TOKENS, ENABLE_STREAMING, PROMPT_LIST
 
 def _run_inference(
     prompt: str,
@@ -157,23 +157,15 @@ def main():
     print(f"[main] Model '{CHOSEN_MODEL}' loaded. Main computation device: {device}.")
     if model_vram_info and device == torch.device("cuda"):
          print(f"[main] Initial Model VRAM (After Load) - Allocated: {model_vram_info['after_load_allocated_gb']:.2f} GB, Initial Increase: {model_vram_info['model_footprint_gb']:.2f} GB")
-
-    # 2. Define a list of prompts
-    prompt_list = [
-        "Once upon a time, in a land far, far away",
-        "The secret ingredient to the world's best chocolate cake is",
-        "Explain the concept of quantum entanglement in simple terms:",
-        "Write a short poem about a rainy day in the city.",
-    ]
-
+    
     all_results = {}
     is_cuda = (device == torch.device("cuda"))
     if model_vram_info and is_cuda:
         all_results["model_vram"] = model_vram_info
 
-    # 3. Inference for each prompt
+    # 2. Inference for each prompt
     print("\n--- [main] Running Measured Inference Examples ---")
-    for i, prompt in enumerate(prompt_list):
+    for i, prompt in enumerate(PROMPT_LIST):
         prompt_label = f"Prompt {i+1}"
         generated_text, token_latency, inference_vram = _run_inference(
             prompt=prompt,
@@ -190,7 +182,7 @@ def main():
         all_results[prompt_label] = prompt_metrics
 
 
-    # 4. Print summary
+    # 3. Print summary
     _print_summary(all_results)
     print(f"\n--- [main] Execution Finished ({mode}) ---")
 
