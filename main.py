@@ -58,7 +58,7 @@ def _run_inference(
             torch.cuda.reset_peak_memory_stats(device)
             print(f"[main] VRAM Before Generate (Device {device}) - Allocated: {start_mem_allocated / (1024**3):.2f} GB, Reserved: {start_mem_reserved / (1024**3):.2f} GB")
 
-        # --- 3. 設定 GenerationConfig 以啟用 KV Offload (如果配置允許) ---
+        # 3. Settup GenerationConfig
         generation_config_kwargs = {}
         if ENABLE_KV_OFFLOAD:
             try:
@@ -81,7 +81,7 @@ def _run_inference(
             except Exception as e_kv:
                 print(f"[main] Warning: Could not set up KV offload automatically: {e_kv}. KV cache might remain on GPU.")
         else:
-            print("[main] KV Offload disabled. KV cache will use default behavior (likely GPU).")
+            print("[main] KV Offload disabled.")
             generation_config_kwargs["use_cache"] = True
 
 
