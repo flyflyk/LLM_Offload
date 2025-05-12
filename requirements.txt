@@ -1,3 +1,2 @@
-transformers
-accelerate>=0.20.0
-safetensors
+transformers>=4.30.0
+accelerate>=0.21.0
