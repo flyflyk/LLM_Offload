@@ -1,5 +1,3 @@
-import torch
-
 CHOSEN_MODEL = "facebook/opt-6.7b"
 MAX_TOKENS = 20
 PROMPT_LIST = [
@@ -12,11 +10,11 @@ PROMPT_LIST = [
     "Write a short poem about a cat watching the rain.",
     "What is the capital of Japan?",
 ]
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 ENABLE_STREAMING = True
 ENABLE_KV_OFFLOAD = True
 PROMPT_LOG = False
 OFFLOAD_FOLDER = "offload_dir"
 MAX_CPU_OFFLOAD_RAM_GB = 8
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = "cuda"
 LOG_FILE = "log.log"
