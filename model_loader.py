@@ -57,7 +57,7 @@ def load_model(model_name: str):
     
     logger.info(f"Loading model weights for {model_name} with kwargs: {model_kwargs}...")
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
-    model.to(gpu)
+    
     if ENABLE_STREAMING:
         logger.info(f"Model device map (first few layers):\n{str(model.hf_device_map)[:200]}...")
     
