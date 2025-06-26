@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 CHOSEN_MODEL = "facebook/opt-6.7b"
+=======
+CHOSEN_MODEL = "tiiuae/falcon-rw-1b"
+>>>>>>> Stashed changes
 MAX_TOKENS = 20
 PROMPT_LIST = [
     (
