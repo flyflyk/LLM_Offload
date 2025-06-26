@@ -1,4 +1,4 @@
-CHOSEN_MODEL = "facebook/opt-2.7b"
+CHOSEN_MODEL = "facebook/opt-6.7b"
 MAX_TOKENS = 20
 PROMPT_LIST = [
     (
@@ -11,8 +11,8 @@ PROMPT_LIST = [
     "What is the capital of Japan?",
 ]
 BATCH_SIZE = 4
-ENABLE_STREAMING = False
-ENABLE_KV_OFFLOAD = False
+ENABLE_STREAMING = True
+ENABLE_KV_OFFLOAD = True
 PROMPT_LOG = False
 OFFLOAD_FOLDER = "offload_dir"
 MAX_CPU_OFFLOAD_RAM_GB = 8

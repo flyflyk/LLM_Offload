@@ -1,0 +1,59 @@
+INFO - [__main__] - ln:86 - --- Starting Execution (Default) ---
+INFO - [__main__] - ln:87 - Using device: cuda
+INFO - [__main__] - ln:88 - Batch size: 4
+INFO - [__main__] - ln:89 - Loading model 'facebook/opt-2.7b'...
+INFO - [model_loader] - ln:14 - Attempting to load model: facebook/opt-2.7b (Default (Full Load))
+INFO - [model_loader] - ln:27 - Loading tokenizer for facebook/opt-2.7b...
+tokenizer_config.json: 100%|████████████████████████████████████████| 685/685 [00:00<00:00, 1.70MB/s]
+config.json: 100%|██████████████████████████████████████████████████| 691/691 [00:00<00:00, 6.31MB/s]
+vocab.json: 100%|█████████████████████████████████████████████████| 899k/899k [00:00<00:00, 4.76MB/s]
+merges.txt: 100%|█████████████████████████████████████████████████| 456k/456k [00:00<00:00, 3.49MB/s]
+special_tokens_map.json: 100%|██████████████████████████████████████| 441/441 [00:00<00:00, 1.37MB/s]
+INFO - [model_loader] - ln:56 - Layer offloading disabled.
+INFO - [model_loader] - ln:58 - Loading model weights for facebook/opt-2.7b with kwargs: {'low_cpu_mem_usage': True, 'torch_dtype': torch.float16}...
+pytorch_model.bin: 100%|████████████████████████████████████████| 5.30G/5.30G [01:08<00:00, 77.4MB/s]
+model.safetensors: 100%|█████████████████████████████████████████| 5.30G/5.30G [00:28<00:00, 188MB/s]
+generation_config.json: 100%|████████████████████████████████████████| 137/137 [00:00<00:00, 407kB/s]
+INFO - [model_loader] - ln:68 - Model set to evaluation mode.
+INFO - [model_loader] - ln:71 - Model and tokenizer ready! Loading took 113.73 seconds.
+INFO - [model_loader] - ln:72 - ------------------------------
+INFO - [__main__] - ln:106 - 
+--- Running Measured Inference Examples in Batches ---
+INFO - [__main__] - ln:117 - Processing Batch 1 with 4 prompts...
+INFO - [inference_runner] - ln:33 - Input IDs shape after tokenization (batch_size, seq_len): torch.Size([4, 49])
+INFO - [inference_runner] - ln:38 - Inputs moved to device: cuda:0
+INFO - [inference_runner] - ln:45 - VRAM Before Generate (Device cuda) - Allocated: 4.94 GB, Reserved: 5.13 GB
+INFO - [inference_runner] - ln:51 - Running batched inference...
+INFO - [inference_runner] - ln:74 - VRAM After Generate (Device cuda) - Allocated: 4.95 GB
+INFO - [inference_runner] - ln:106 - Batch generated 80 new tokens in total.
+INFO - [inference_runner] - ln:107 - Total generation time for batch: 2.8259 seconds.
+INFO - [inference_runner] - ln:108 - Average latency per new token in batch: 0.0353 seconds/token.
+INFO - [inference_runner] - ln:109 - Batch throughput: 28.31 tokens/second.
+INFO - [inference_runner] - ln:114 - ------------------------------
+INFO - [__main__] - ln:15 - 
+--- Results Summary ---
+INFO - [__main__] - ln:21 - Model VRAM Footprint:
+INFO - [__main__] - ln:24 -   initial_allocated_gb: 0.0000 GB
+INFO - [__main__] - ln:24 -   initial_reserved_gb: 0.0000 GB
+INFO - [__main__] - ln:24 -   after_load_allocated_gb: 4.9395 GB
+INFO - [__main__] - ln:24 -   model_footprint_gb: 4.9395 GB
+INFO - [__main__] - ln:25 - ---------------
+INFO - [__main__] - ln:27 - Inference Metrics per Batch:
+INFO - [__main__] - ln:32 - Batch 1:
+INFO - [__main__] - ln:38 -   Prompts in batch: 4
+INFO - [__main__] - ln:39 -   Tokens generated: 80
+INFO - [__main__] - ln:40 -   Batch processing time: 2.8419 s
+INFO - [__main__] - ln:43 -   Avg Latency: 0.0353 sec/token
+INFO - [__main__] - ln:51 -   Batch Throughput: 28.15 tokens/sec
+INFO - [__main__] - ln:56 -   Inference Peak VRAM Allocated Increase: 0.1055 GB
+INFO - [__main__] - ln:57 -   Inference Peak VRAM Allocated Total: 5.0450 GB
+INFO - [__main__] - ln:60 - ----------
+INFO - [__main__] - ln:62 - 
+--- Overall Performance ---
+INFO - [__main__] - ln:63 - Total prompts processed: 4
+INFO - [__main__] - ln:64 - Total new tokens generated across all batches: 80
+INFO - [__main__] - ln:65 - Total processing time for all batches: 2.8419 seconds
+INFO - [__main__] - ln:70 - Overall Average Latency: 0.0355 sec/token
+INFO - [__main__] - ln:71 - Overall Throughput: 28.15 tokens/sec
+INFO - [__main__] - ln:77 - Average of Batch Latencies: 0.0353 sec/token
+INFO - [__main__] - ln:79 - ------------------------------
