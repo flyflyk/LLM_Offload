@@ -61,8 +61,7 @@ def benchmark_flexllmgen(args, prompt_text):
     
     command = [
         "python",
-        "-m",
-        "flexllmgen.flex_opt",
+        os.path.join(flexllmgen_path, "flexllmgen", "flex_opt.py"),
         "--model", args.model,
         "--prompt-text", prompt_text,
         "--gpu-batch-size", str(args.input_nums),
@@ -80,7 +79,7 @@ def benchmark_flexllmgen(args, prompt_text):
         flexllmgen_env['PYTHONPATH'] = flexllmgen_path
 
     start_time = time.time()
-    process = subprocess.run(command, cwd=flexllmgen_path, capture_output=True, text=True, env=flexllmgen_env)
+    process = subprocess.run(command, capture_output=True, text=True, env=flexllmgen_env)
     end_time = time.time()
 
     total_time = end_time - start_time
