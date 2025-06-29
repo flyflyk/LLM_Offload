@@ -5,7 +5,7 @@
     *   **RAM:** 取決於所選模型大小。
     *   **儲存空間:** 存模型快取。
 *   **軟體:**
-    *   **OS:** 使用 `benchmark.py` 的話要 Linux
+    *   **OS:** 若要使用 `benchmark.py` ，需要 Linux 系統
     *   **Python:** 建議版本 3.12.6+
     *   **Anaconda:** 用於管理 Python 環境和依賴。
     *   **NVIDIA 驅動程式:** 最新的穩定版 NVIDIA 顯示卡驅動程式。
@@ -49,7 +49,7 @@
     python main.py
     ```
 
-3.  **執行基準測試 (Benchmark):**
+3.  **執行 Benchmark:**
     使用 `benchmark.py` 來比較 Accelerate 和 FlexLLMGen 的推理效能。
 
     ```bash
