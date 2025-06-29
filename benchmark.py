@@ -57,7 +57,7 @@ def benchmark_flexllmgen(args, prompt_text):
     """
     print("--- Benchmarking FlexLLMGen ---")
     
-    flexllmgen_path = os.path.abspath("../FlexLLMGen")
+    flexllmgen_path = os.path.abspath("./FlexLLMGen")
     
     command = [
         "python",

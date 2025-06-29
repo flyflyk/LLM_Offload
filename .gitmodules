@@ -1,0 +1,3 @@
+[submodule "FlexLLMGen"]
+	path = FlexLLMGen
+	url = https://github.com/flyflyk/FlexLLMGen.git

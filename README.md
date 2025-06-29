@@ -18,16 +18,22 @@
     cd LLM_Offload
     ```
 
-2.  **(推薦) 建立並啟用 Conda 環境:**
+2.  **初始化 Submodule:**
+    使用 Git Submodule 來管理 FlexLLMGen 依賴。執行以下指令來下載：
+    ```bash
+    git submodule update --init --recursive
+    ```
+
+3.  **(推薦) 建立並啟用 Conda 環境:**
     ```bash
     conda create -n llm_inference_env python=3.12.6 -y
     conda activate llm_inference_env
     ```
 
-3.  **安裝 PyTorch (GPU 版本):**
+4.  **安裝 PyTorch (GPU 版本):**
     *   前往 [PyTorch 官方網站 Get Started 頁面](https://pytorch.org/get-started/locally/)。
 
-4.  **安裝其他依賴套件:**
+5.  **安裝其他依賴套件:**
     ```bash
     pip install -r requirements.txt
     ```
