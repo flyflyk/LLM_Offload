@@ -71,8 +71,16 @@ def benchmark_flexllmgen(args, prompt_text):
         "--percent", "0", "100", "100", "0", "100", "0"
     ]
 
+    # Prepare environment for subprocess to include FlexLLMGen in PYTHONPATH
+    flexllmgen_env = os.environ.copy()
+    current_pythonpath = flexllmgen_env.get('PYTHONPATH', '')
+    if current_pythonpath:
+        flexllmgen_env['PYTHONPATH'] = f"{flexllmgen_path}:{current_pythonpath}"
+    else:
+        flexllmgen_env['PYTHONPATH'] = flexllmgen_path
+
     start_time = time.time()
-    process = subprocess.run(command, cwd=flexllmgen_path, capture_output=True, text=True)
+    process = subprocess.run(command, cwd=flexllmgen_path, capture_output=True, text=True, env=flexllmgen_env)
     end_time = time.time()
 
     total_time = end_time - start_time
