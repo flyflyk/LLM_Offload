@@ -30,6 +30,9 @@ def initialize_accelerate(args):
         offload_dir="offload_dir"
     )
     print("Accelerate model initialized.")
+    if hasattr(runner.model, 'hf_device_map'):
+        print("Accelerate Model Weight Distribution:")
+        print(runner.model.hf_device_map)
     return runner
 
 def initialize_flexllmgen(args):
@@ -69,6 +72,7 @@ def initialize_flexllmgen(args):
     
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
     print("FlexLLMGen model initialized.")
+    print(f"FlexLLMGen Model Weight Distribution: GPU={opt_lm.policy.w_gpu_percent}%, CPU={opt_lm.policy.w_cpu_percent}%")
     return opt_lm, env
 
 # --- Benchmarking Functions ---
@@ -158,5 +162,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
