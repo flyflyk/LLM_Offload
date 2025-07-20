@@ -134,7 +134,7 @@ def benchmark_flexllmgen(args, prompt_text):
 
     # 4. Run benchmark (time only the generation part)
     start_time = time.time()
-    outputs, _ = opt_lm.generate(
+    outputs = opt_lm.generate(
         input_ids_batch,
         max_new_tokens=flex_args.gen_len,
     )
