@@ -96,16 +96,16 @@ def benchmark_flexllmgen(args, prompt_text):
         group_dim=2, symmetric=False)
 
     policy = Policy(
-        flex_args.gpu_batch_size,
-        1,  # num_gpu_batches
-        flex_args.percent,
-        flex_args.pin_weight,
-        flex_args.cpu_cache_compute,
-        flex_args.attn_sparsity,
-        flex_args.compress_weight,
-        weight_comp_config,
-        flex_args.compress_cache,
-        cache_comp_config,
+        gpu_batch_size=flex_args.gpu_batch_size,
+        num_gpu_batches=1,
+        percent=flex_args.percent,
+        pin_weight=flex_args.pin_weight,
+        cpu_cache_compute=flex_args.cpu_cache_compute,
+        attn_sparsity=flex_args.attn_sparsity,
+        compress_weight=flex_args.compress_weight,
+        comp_weight_config=weight_comp_config,
+        compress_cache=flex_args.compress_cache,
+        comp_cache_config=cache_comp_config,
     )
     
     print("Initializing FlexLLMGen model...")
