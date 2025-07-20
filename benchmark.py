@@ -20,21 +20,20 @@ from flexllmgen.utils import ExecutionEnv
 
 # --- Helper Functions ---
 
-def print_flexllmgen_distribution(opt_lm):
-    """Prints the detailed layer-by-layer weight distribution for a FlexLLMGen model."""
-    print("--- FlexLLMGen Model Weight Distribution ---")
+def print_flexllmgen_distribution(opt_lm, log_file):
+    """Prints the detailed layer-by-layer weight distribution for a FlexLLMGen model to a file."""
+    print("--- FlexLLMGen Model Weight Distribution ---", file=log_file)
     for i, layer in enumerate(opt_lm.layers):
         layer_name = f"Layer {i}: {layer.__class__.__name__}"
         weights_vh = opt_lm.weight_home[i]
 
         # Helper to print weight info
         def print_weights(title, names, weights, name_prefix=""):
-            print(f"  {title}")
+            print(f"  {title}", file=log_file)
             for name, weight in zip(names, weights):
                 full_name = f"{name_prefix}{name}"
-                # For compressed weights, the device is on the container
                 device_name = weight.device.name if hasattr(weight, 'device') else weight.data[0].device.name
-                print(f"    - {full_name}: {device_name}")
+                print(f"    - {full_name}: {device_name}", file=log_file)
 
         if isinstance(layer, InputEmbed):
             names = ["decoder.embed_tokens.weight", "decoder.embed_positions.weight"]
@@ -44,26 +43,26 @@ def print_flexllmgen_distribution(opt_lm):
             names = ["decoder.layer_norm.weight", "decoder.layer_norm.bias", "decoder.embed_tokens.weight"]
             print_weights(layer_name, names, weights_vh.val)
 
-        elif isinstance(layer, TransformerLayer): # Handles sep_layer=False
+        elif isinstance(layer, TransformerLayer):
             attention_vh, mlp_vh = weights_vh.val
             attn_names = [".self_attn.q_proj.weight", ".self_attn.q_proj.bias", ".self_attn.k_proj.weight", ".self_attn.k_proj.bias", ".self_attn.v_proj.weight", ".self_attn.v_proj.bias", ".self_attn.out_proj.weight", ".self_attn.out_proj.bias", ".self_attn_layer_norm.weight", ".self_attn_layer_norm.bias"]
             mlp_names = [".fc1.weight", ".fc1.bias", ".fc2.weight", ".fc2.bias", ".final_layer_norm.weight", ".final_layer_norm.bias"]
             print_weights(f"{layer_name} - SelfAttention", attn_names, attention_vh.val, f"decoder.layers.{layer.attention.layer_id}")
             print_weights(f"{layer_name} - MLP", mlp_names, mlp_vh.val, f"decoder.layers.{layer.mlp.layer_id}")
 
-        elif isinstance(layer, SelfAttention): # Handles sep_layer=True
+        elif isinstance(layer, SelfAttention):
             names = [".self_attn.q_proj.weight", ".self_attn.q_proj.bias", ".self_attn.k_proj.weight", ".self_attn.k_proj.bias", ".self_attn.v_proj.weight", ".self_attn.v_proj.bias", ".self_attn.out_proj.weight", ".self_attn.out_proj.bias", ".self_attn_layer_norm.weight", ".self_attn_layer_norm.bias"]
             print_weights(layer_name, names, weights_vh.val, f"decoder.layers.{layer.layer_id}")
 
-        elif isinstance(layer, MLP): # Handles sep_layer=True
+        elif isinstance(layer, MLP):
             names = [".fc1.weight", ".fc1.bias", ".fc2.weight", ".fc2.bias", ".final_layer_norm.weight", ".final_layer_norm.bias"]
             print_weights(layer_name, names, weights_vh.val, f"decoder.layers.{layer.layer_id}")
         
-        print("-" * 30)
+        print("-" * 30, file=log_file)
 
 # --- Initialization Functions ---
 
-def initialize_accelerate(args):
+def initialize_accelerate(args, log_file):
     """Loads the Accelerate model and returns the runner object."""
     print("--- Initializing Accelerate Model ---")
     runner = InferenceRunner(
@@ -74,12 +73,12 @@ def initialize_accelerate(args):
     )
     print("Accelerate model initialized.")
     if hasattr(runner.model, 'hf_device_map'):
-        print("--- Accelerate Model Weight Distribution ---")
-        print(runner.model.hf_device_map)
-        print("-" * 30)
+        print("--- Accelerate Model Weight Distribution ---", file=log_file)
+        print(runner.model.hf_device_map, file=log_file)
+        print("-" * 30, file=log_file)
     return runner
 
-def initialize_flexllmgen(args):
+def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model ---")
     cache_path = os.path.abspath("./flexllmgen_cache")
@@ -116,7 +115,7 @@ def initialize_flexllmgen(args):
     
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
     print("FlexLLMGen model initialized.")
-    print_flexllmgen_distribution(opt_lm)
+    print_flexllmgen_distribution(opt_lm, log_file)
     return opt_lm, env
 
 # --- Benchmarking Functions ---
@@ -169,40 +168,48 @@ def main():
     parser.add_argument("--input-nums", type=int, default=4, help="Number of inputs (batch size).")
     parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
     parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
+    parser.add_argument("--log-file", type=str, default=None, help="Path to a file to save the weight distribution logs.")
     
     args = parser.parse_args()
 
-    # --- 1. Initialization Phase ---
-    print("Initializing models... This may take a moment.")
-    accelerate_model = initialize_accelerate(args)
-    flexllmgen_model, flexllmgen_env = initialize_flexllmgen(args)
-    print("All models initialized. Starting benchmarks.\n")
+    log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
 
-    # --- 2. Benchmarking Phase ---
-    natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
-    prompt_words = natural_prompt_base.split()
-    multiplier = (args.input_len // len(prompt_words)) + 1
-    prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
+    try:
+        # --- 1. Initialization Phase ---
+        print("Initializing models... This may take a moment.")
+        accelerate_model = initialize_accelerate(args, log_file=log_file_handle)
+        flexllmgen_model, flexllmgen_env = initialize_flexllmgen(args, log_file=log_file_handle)
+        print("All models initialized. Starting benchmarks.\n")
 
-    results = []
-    results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
-    results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text))
+        # --- 2. Benchmarking Phase ---
+        natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
+        prompt_words = natural_prompt_base.split()
+        multiplier = (args.input_len // len(prompt_words)) + 1
+        prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
 
-    # --- 3. Print Summary ---
-    print("\n--- Benchmark Summary ---")
-    print(f"Model: {args.model}, Input Nums: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
-    print("| Framework    | Throughput (tokens/s) | Latency (s/sample) |")
-    print("|--------------|-----------------------|--------------------|")
-    for res in results:
-        throughput_str = f"{res['throughput']:.2f}"
-        latency_str = f"{res['latency']:.4f}"
-        print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} |")
-    print("----------------------------------------------------------")
+        results = []
+        results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
+        results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text))
 
-    # --- 4. Cleanup Phase ---
-    print("\nCleaning up FlexLLMGen resources...")
-    flexllmgen_env.close_copy_threads()
-    print("Cleanup complete. Exiting.")
+        # --- 3. Print Summary ---
+        print("\n--- Benchmark Summary ---")
+        print(f"Model: {args.model}, Input Nums: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
+        print("| Framework    | Throughput (tokens/s) | Latency (s/sample) |")
+        print("|--------------|-----------------------|--------------------|")
+        for res in results:
+            throughput_str = f"{res['throughput']:.2f}"
+            latency_str = f"{res['latency']:.4f}"
+            print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} |")
+        print("----------------------------------------------------------")
+
+        # --- 4. Cleanup Phase ---
+        print("\nCleaning up FlexLLMGen resources...")
+        flexllmgen_env.close_copy_threads()
+        print("Cleanup complete. Exiting.")
+
+    finally:
+        if args.log_file and log_file_handle is not sys.stdout:
+            log_file_handle.close()
 
 if __name__ == "__main__":
     main()

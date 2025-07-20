@@ -53,10 +53,11 @@
     使用 `benchmark.py` 來比較 Accelerate 和 FlexLLMGen 的推理效能。
 
     ```bash
-    python benchmark.py --model facebook/opt-1.3b --input-nums 4 --input-len 64 --gen-len 32
+    python benchmark.py --model facebook/opt-1.3b --input-nums 4 --input-len 64 --gen-len 32 --log-file model_map
     ```
 
     *   `--model`: 指定要測試的模型 (例如 `facebook/opt-1.3b`)。
     *   `--input-nums`: 輸入的數量 (批次大小)。
     *   `--input-len`: 輸入提示的長度 (token 數)。
     *   `--gen-len`: 要生成的 token 數量。
+    *   `--log-file`: (可選) 將模型權重分佈日誌保存到指定文件，而不是直接打印到控制台。
