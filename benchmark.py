@@ -5,6 +5,8 @@ from inference_runner import InferenceRunner
 import subprocess
 import os
 import sys
+import numpy as np
+from transformers import AutoTokenizer
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -90,13 +92,11 @@ def benchmark_flexllmgen(args, prompt_text):
     )
 
     # 2. Initialize the model (outside the timer)
-    # This now correctly mimics the environment setup from flex_opt.py
     gpu = TorchDevice("cuda:0")
     cpu = TorchDevice("cpu")
     disk = TorchDisk(offload_dir)
     env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
-    # Create dummy compression configs as compression is disabled for this benchmark
     weight_comp_config = CompressionConfig(num_bits=16, group_size=256, 
         group_dim=1, symmetric=False)
     cache_comp_config = CompressionConfig(num_bits=16, group_size=256,
@@ -126,12 +126,16 @@ def benchmark_flexllmgen(args, prompt_text):
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
     print("Initialization complete.")
 
-    prompts = [prompt_text] * args.input_nums
+    # 3. Tokenize inputs
+    # FlexLLMGen's generate method expects tokenized and padded inputs.
+    tokenizer = AutoTokenizer.from_pretrained("facebook/opt-30b", padding_side="left")
+    tokenized_prompts = tokenizer([prompt_text], padding="max_length", max_length=flex_args.prompt_len, return_tensors="np").input_ids
+    input_ids_batch = np.tile(tokenized_prompts, (args.input_nums, 1))
 
-    # 3. Run benchmark (time only the generation part)
+    # 4. Run benchmark (time only the generation part)
     start_time = time.time()
     outputs, _ = opt_lm.generate(
-        prompts,
+        input_ids_batch,
         max_new_tokens=flex_args.gen_len,
     )
     end_time = time.time()
@@ -182,8 +186,7 @@ def main():
 
     # --- Print Summary ---
     print("\n--- Benchmark Summary ---")
-    print("| Framework    | Model             | Input Nums | Input Len | Gen Len | Throughput (tokens/s) | Latency (s/sample) |")
-    print("|--------------|-------------------|------------|-----------|---------|-----------------------|--------------------|")
+    print("| Framework    | Model             | Input Nums | Input Len | Gen Len | Throughput (tokens/s) | Latency (s/sample) |\n|--------------|-------------------|------------|-----------|---------|-----------------------|--------------------|")
     for res in results:
         throughput_str = f"{res['throughput']:.2f}"
         print(f"| {res['framework']:<12} | {res['model']:<17} | {res['input_nums']:<10} | {res['input_len']:<9} | {res['gen_len']:<7} | {throughput_str:<21} | {res['latency']:.4f}             |")
