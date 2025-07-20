@@ -72,9 +72,10 @@ def initialize_accelerate(args, log_file):
         offload_dir="offload_dir"
     )
     print("Accelerate model initialized.")
-    if hasattr(runner.model, 'hf_device_map'):
+    # Use accelerator.get_device_map to get the device map when using Accelerate
+    if runner.accelerator and runner.model:
         print("--- Accelerate Model Weight Distribution ---", file=log_file)
-        print(runner.model.hf_device_map, file=log_file)
+        print(runner.accelerator.get_device_map(runner.model), file=log_file)
         print("-" * 30, file=log_file)
     return runner
 
@@ -82,8 +83,8 @@ def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model ---")
     cache_path = os.path.abspath("./flexllmgen_cache")
-    offload_dir = os.path.abspath("./flexllmgen_offload")
     os.makedirs(cache_path, exist_ok=True)
+    offload_dir = os.path.abspath("./flexllmgen_offload")
     os.makedirs(offload_dir, exist_ok=True)
 
     flex_args = argparse.Namespace(
