@@ -4,6 +4,13 @@ import torch
 from inference_runner import InferenceRunner
 import subprocess
 import os
+import sys
+
+# Add the FlexLLMGen submodule to the Python path
+flexllmgen_path = os.path.abspath("./FlexLLMGen")
+if flexllmgen_path not in sys.path:
+    sys.path.insert(0, flexllmgen_path)
+
 # FlexLLMGen imports
 from flexllmgen.flex_opt import Policy, OptLM, TorchDevice, CompressionConfig
 
