@@ -98,7 +98,16 @@ def benchmark_flexllmgen(args, prompt_text):
     policy = Policy(
         gpu_batch_size=flex_args.gpu_batch_size,
         num_gpu_batches=1,
-        percent=flex_args.percent,
+        # Unpack the percent values
+        w_gpu_percent=flex_args.percent[0],
+        w_cpu_percent=flex_args.percent[1],
+        cache_gpu_percent=flex_args.percent[2],
+        cache_cpu_percent=flex_args.percent[3],
+        act_gpu_percent=flex_args.percent[4],
+        act_cpu_percent=flex_args.percent[5],
+        # Add other required arguments with default values from flex_opt.py
+        overlap=True,
+        sep_layer=True,
         pin_weight=flex_args.pin_weight,
         cpu_cache_compute=flex_args.cpu_cache_compute,
         attn_sparsity=flex_args.attn_sparsity,
