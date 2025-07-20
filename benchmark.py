@@ -33,7 +33,7 @@ def initialize_accelerate(args):
     return runner
 
 def initialize_flexllmgen(args):
-    """Loads the FlexLLMGen model and returns the model object."""
+    """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model ---")
     cache_path = os.path.abspath("./flexllmgen_cache")
     offload_dir = os.path.abspath("./flexllmgen_offload")
@@ -69,7 +69,7 @@ def initialize_flexllmgen(args):
     
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
     print("FlexLLMGen model initialized.")
-    return opt_lm
+    return opt_lm, env
 
 # --- Benchmarking Functions ---
 
@@ -127,7 +127,7 @@ def main():
     # --- 1. Initialization Phase ---
     print("Initializing models... This may take a moment.")
     accelerate_model = initialize_accelerate(args)
-    flexllmgen_model = initialize_flexllmgen(args)
+    flexllmgen_model, flexllmgen_env = initialize_flexllmgen(args)
     print("All models initialized. Starting benchmarks.\n")
 
     # --- 2. Benchmarking Phase ---
@@ -150,6 +150,11 @@ def main():
         latency_str = f"{res['latency']:.4f}"
         print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} |")
     print("----------------------------------------------------------")
+
+    # --- 4. Cleanup Phase ---
+    print("\nCleaning up FlexLLMGen resources...")
+    flexllmgen_env.close_copy_threads()
+    print("Cleanup complete. Exiting.")
 
 if __name__ == "__main__":
     main()
