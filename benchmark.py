@@ -32,6 +32,7 @@ def print_flexllmgen_distribution(opt_lm, log_file):
             print(f"  {title}", file=log_file)
             for name, weight in zip(names, weights):
                 full_name = f"{name_prefix}{name}"
+                # For compressed weights, the device is on the container
                 device_name = weight.device.name if hasattr(weight, 'device') else weight.data[0].device.name
                 print(f"    - {full_name}: {device_name}", file=log_file)
 
@@ -72,19 +73,19 @@ def initialize_accelerate(args, log_file):
         offload_dir="offload_dir"
     )
     print("Accelerate model initialized.")
-    # Use accelerator.get_device_map to get the device map when using Accelerate
-    if runner.accelerator and runner.model:
-        print("--- Accelerate Model Weight Distribution ---", file=log_file)
-        print(runner.accelerator.get_device_map(runner.model), file=log_file)
-        print("-" * 30, file=log_file)
+    
+    print("--- Accelerate Model Weight Distribution ---", file=log_file)
+    for name, param in runner.model.named_parameters():
+        print(f"  {name}: {param.device}", file=log_file)
+    print("-" * 30, file=log_file)
     return runner
 
 def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model ---")
     cache_path = os.path.abspath("./flexllmgen_cache")
-    os.makedirs(cache_path, exist_ok=True)
     offload_dir = os.path.abspath("./flexllmgen_offload")
+    os.makedirs(cache_path, exist_ok=True)
     os.makedirs(offload_dir, exist_ok=True)
 
     flex_args = argparse.Namespace(
