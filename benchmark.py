@@ -12,7 +12,9 @@ if flexllmgen_path not in sys.path:
     sys.path.insert(0, flexllmgen_path)
 
 # FlexLLMGen imports
-from flexllmgen.flex_opt import Policy, OptLM, TorchDevice, CompressionConfig
+from flexllmgen.flex_opt import Policy, OptLM, CompressionConfig
+from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
+from flexllmgen.utils import ExecutionEnv
 
 def benchmark_accelerate(args, prompt_text):
     """
@@ -68,7 +70,9 @@ def benchmark_flexllmgen(args, prompt_text):
 
     # 1. Set up environment and arguments for FlexLLMGen
     cache_path = os.path.abspath("./flexllmgen_cache")
+    offload_dir = os.path.abspath("./flexllmgen_offload")
     os.makedirs(cache_path, exist_ok=True)
+    os.makedirs(offload_dir, exist_ok=True)
 
     # Mimic the argparse Namespace that FlexLLMGen's components expect
     flex_args = argparse.Namespace(
@@ -86,10 +90,13 @@ def benchmark_flexllmgen(args, prompt_text):
     )
 
     # 2. Initialize the model (outside the timer)
-    env = TorchDevice(torch.device("cuda:0"))
+    # This now correctly mimics the environment setup from flex_opt.py
+    gpu = TorchDevice("cuda:0")
+    cpu = TorchDevice("cpu")
+    disk = TorchDisk(offload_dir)
+    env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
     # Create dummy compression configs as compression is disabled for this benchmark
-    # This mimics the logic from the original flex_opt.py script
     weight_comp_config = CompressionConfig(num_bits=16, group_size=256, 
         group_dim=1, symmetric=False)
     cache_comp_config = CompressionConfig(num_bits=16, group_size=256,
@@ -98,14 +105,12 @@ def benchmark_flexllmgen(args, prompt_text):
     policy = Policy(
         gpu_batch_size=flex_args.gpu_batch_size,
         num_gpu_batches=1,
-        # Unpack the percent values
         w_gpu_percent=flex_args.percent[0],
         w_cpu_percent=flex_args.percent[1],
         cache_gpu_percent=flex_args.percent[2],
         cache_cpu_percent=flex_args.percent[3],
         act_gpu_percent=flex_args.percent[4],
         act_cpu_percent=flex_args.percent[5],
-        # Add other required arguments with default values from flex_opt.py
         overlap=True,
         sep_layer=True,
         pin_weight=flex_args.pin_weight,
@@ -128,8 +133,6 @@ def benchmark_flexllmgen(args, prompt_text):
     outputs, _ = opt_lm.generate(
         prompts,
         max_new_tokens=flex_args.gen_len,
-        debug=False, # Set to False to avoid excessive printing during timing
-        show_progress=False
     )
     end_time = time.time()
 
@@ -156,7 +159,6 @@ def benchmark_flexllmgen(args, prompt_text):
         "throughput": throughput,
         "latency": latency,
     }
-
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark Accelerate vs. FlexLLMGen")
@@ -190,3 +192,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
