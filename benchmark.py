@@ -58,11 +58,14 @@ def benchmark_flexllmgen(args, prompt_text):
     print("--- Benchmarking FlexLLMGen ---")
     
     flexllmgen_path = os.path.abspath("./FlexLLMGen")
+    cache_path = os.path.abspath("./flexllmgen_cache")
+    os.makedirs(cache_path, exist_ok=True)
     
     command = [
         "python",
         os.path.join(flexllmgen_path, "flexllmgen", "flex_opt.py"),
         "--model", args.model,
+        "--path", cache_path,
         "--prompt-text", prompt_text,
         "--gpu-batch-size", str(args.input_nums),
         "--prompt-len", str(args.input_len),
@@ -89,7 +92,10 @@ def benchmark_flexllmgen(args, prompt_text):
     for line in output_text.splitlines():
         if "total throughput" in line.lower():
             try:
-                throughput = float(line.split(":")[1].strip().split()[0])
+                # Correctly parse the throughput value
+                # Line format: "total latency: X.XXX s  total throughput: Y.YYY token/s"
+                throughput_str = line.split("total throughput:")[1].strip().split()[0]
+                throughput = float(throughput_str)
                 break
             except (IndexError, ValueError) as e:
                 print(f"Could not parse throughput from line: '{line}'. Error: {e}")
