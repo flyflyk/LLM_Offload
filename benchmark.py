@@ -67,7 +67,7 @@ def benchmark_flexllmgen(args, prompt_text):
         "--gpu-batch-size", str(args.input_nums),
         "--prompt-len", str(args.input_len),
         "--gen-len", str(args.gen_len),
-        "--percent", "0", "100", "100", "0", "100", "0"
+        "--percent", "100", "0", "100", "0", "100", "0"
     ]
 
     # Prepare environment for subprocess to include FlexLLMGen in PYTHONPATH
