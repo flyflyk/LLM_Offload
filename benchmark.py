@@ -14,9 +14,52 @@ if flexllmgen_path not in sys.path:
     sys.path.insert(0, flexllmgen_path)
 
 # FlexLLMGen imports
-from flexllmgen.flex_opt import Policy, OptLM, CompressionConfig
+from flexllmgen.flex_opt import Policy, OptLM, CompressionConfig, InputEmbed, OutputEmbed, SelfAttention, MLP, TransformerLayer
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
+
+# --- Helper Functions ---
+
+def print_flexllmgen_distribution(opt_lm):
+    """Prints the detailed layer-by-layer weight distribution for a FlexLLMGen model."""
+    print("--- FlexLLMGen Model Weight Distribution ---")
+    for i, layer in enumerate(opt_lm.layers):
+        layer_name = f"Layer {i}: {layer.__class__.__name__}"
+        weights_vh = opt_lm.weight_home[i]
+
+        # Helper to print weight info
+        def print_weights(title, names, weights, name_prefix=""):
+            print(f"  {title}")
+            for name, weight in zip(names, weights):
+                full_name = f"{name_prefix}{name}"
+                # For compressed weights, the device is on the container
+                device_name = weight.device.name if hasattr(weight, 'device') else weight.data[0].device.name
+                print(f"    - {full_name}: {device_name}")
+
+        if isinstance(layer, InputEmbed):
+            names = ["decoder.embed_tokens.weight", "decoder.embed_positions.weight"]
+            print_weights(layer_name, names, weights_vh.val)
+
+        elif isinstance(layer, OutputEmbed):
+            names = ["decoder.layer_norm.weight", "decoder.layer_norm.bias", "decoder.embed_tokens.weight"]
+            print_weights(layer_name, names, weights_vh.val)
+
+        elif isinstance(layer, TransformerLayer): # Handles sep_layer=False
+            attention_vh, mlp_vh = weights_vh.val
+            attn_names = [".self_attn.q_proj.weight", ".self_attn.q_proj.bias", ".self_attn.k_proj.weight", ".self_attn.k_proj.bias", ".self_attn.v_proj.weight", ".self_attn.v_proj.bias", ".self_attn.out_proj.weight", ".self_attn.out_proj.bias", ".self_attn_layer_norm.weight", ".self_attn_layer_norm.bias"]
+            mlp_names = [".fc1.weight", ".fc1.bias", ".fc2.weight", ".fc2.bias", ".final_layer_norm.weight", ".final_layer_norm.bias"]
+            print_weights(f"{layer_name} - SelfAttention", attn_names, attention_vh.val, f"decoder.layers.{layer.attention.layer_id}")
+            print_weights(f"{layer_name} - MLP", mlp_names, mlp_vh.val, f"decoder.layers.{layer.mlp.layer_id}")
+
+        elif isinstance(layer, SelfAttention): # Handles sep_layer=True
+            names = [".self_attn.q_proj.weight", ".self_attn.q_proj.bias", ".self_attn.k_proj.weight", ".self_attn.k_proj.bias", ".self_attn.v_proj.weight", ".self_attn.v_proj.bias", ".self_attn.out_proj.weight", ".self_attn.out_proj.bias", ".self_attn_layer_norm.weight", ".self_attn_layer_norm.bias"]
+            print_weights(layer_name, names, weights_vh.val, f"decoder.layers.{layer.layer_id}")
+
+        elif isinstance(layer, MLP): # Handles sep_layer=True
+            names = [".fc1.weight", ".fc1.bias", ".fc2.weight", ".fc2.bias", ".final_layer_norm.weight", ".final_layer_norm.bias"]
+            print_weights(layer_name, names, weights_vh.val, f"decoder.layers.{layer.layer_id}")
+        
+        print("-" * 30)
 
 # --- Initialization Functions ---
 
@@ -31,8 +74,9 @@ def initialize_accelerate(args):
     )
     print("Accelerate model initialized.")
     if hasattr(runner.model, 'hf_device_map'):
-        print("Accelerate Model Weight Distribution:")
+        print("--- Accelerate Model Weight Distribution ---")
         print(runner.model.hf_device_map)
+        print("-" * 30)
     return runner
 
 def initialize_flexllmgen(args):
@@ -72,7 +116,7 @@ def initialize_flexllmgen(args):
     
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
     print("FlexLLMGen model initialized.")
-    print(f"FlexLLMGen Model Weight Distribution: GPU={opt_lm.policy.w_gpu_percent}%, CPU={opt_lm.policy.w_cpu_percent}%")
+    print_flexllmgen_distribution(opt_lm)
     return opt_lm, env
 
 # --- Benchmarking Functions ---
