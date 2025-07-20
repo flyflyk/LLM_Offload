@@ -1,0 +1,48 @@
+INFO - [__main__] - ln:86 - --- Starting Execution (Streaming) ---
+INFO - [__main__] - ln:87 - Using device: cuda
+INFO - [__main__] - ln:88 - Batch size: 4
+INFO - [__main__] - ln:89 - Loading model 'tiiuae/falcon-7b'...
+INFO - [model_loader] - ln:14 - Attempting to load model: tiiuae/falcon-7b (Streaming (Layer Offload))
+INFO - [model_loader] - ln:27 - Loading tokenizer for tiiuae/falcon-7b...
+INFO - [model_loader] - ln:36 - Accelerate layer offloading (device_map='auto') enabled.
+INFO - [model_loader] - ln:38 - Cleaning up existing offload directory: offload_dir
+INFO - [model_loader] - ln:41 - Created offload directory: offload_dir
+INFO - [model_loader] - ln:58 - Loading model weights for tiiuae/falcon-7b with kwargs: {'low_cpu_mem_usage': True, 'torch_dtype': torch.float16, 'device_map': 'auto', 'offload_folder': 'offload_dir', 'max_memory': {0: '10GiB', 'cpu': '8 GiB'}}...
+Loading checkpoint shards: 100%|███████████████████████████████████████| 2/2 [00:10<00:00,  5.09s/it]
+WARNING - [accelerate.big_modeling] - ln:442 - Some parameters are on the meta device because they were offloaded to the cpu.
+INFO - [model_loader] - ln:62 - Model device map (first few layers):
+{'transformer.word_embeddings': 0, 'lm_head': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 0, 'transformer.h.4': 0, 'transformer.h.5': 0, 'transformer.h.6': ...
+INFO - [model_loader] - ln:68 - Model set to evaluation mode.
+INFO - [model_loader] - ln:71 - Model and tokenizer ready! Loading took 12.79 seconds.
+INFO - [model_loader] - ln:72 - ------------------------------
+WARNING - [__main__] - ln:93 - Tokenizer does not have a pad_token. Setting pad_token to eos_token.
+INFO - [__main__] - ln:106 - 
+--- Running Measured Inference Examples in Batches ---
+INFO - [__main__] - ln:117 - Processing Batch 1 with 4 prompts...
+INFO - [__main__] - ln:15 - 
+--- Results Summary ---
+INFO - [__main__] - ln:21 - Model VRAM Footprint:
+INFO - [__main__] - ln:24 -   initial_allocated_gb: 0.0000 GB
+INFO - [__main__] - ln:24 -   initial_reserved_gb: 0.0000 GB
+INFO - [__main__] - ln:24 -   after_load_allocated_gb: 9.4219 GB
+INFO - [__main__] - ln:24 -   model_footprint_gb: 9.4219 GB
+INFO - [__main__] - ln:25 - ---------------
+INFO - [__main__] - ln:27 - Inference Metrics per Batch:
+INFO - [__main__] - ln:32 - Batch 1:
+INFO - [__main__] - ln:38 -   Prompts in batch: 4
+INFO - [__main__] - ln:39 -   Tokens generated: 80
+INFO - [__main__] - ln:40 -   Batch processing time: 12.0537 s
+INFO - [__main__] - ln:43 -   Avg Latency: 0.1499 sec/token
+INFO - [__main__] - ln:51 -   Batch Throughput: 6.64 tokens/sec
+INFO - [__main__] - ln:56 -   Inference Peak VRAM Allocated Increase: 9.4298 GB
+INFO - [__main__] - ln:57 -   Inference Peak VRAM Allocated Total: 9.8242 GB
+INFO - [__main__] - ln:60 - ----------
+INFO - [__main__] - ln:62 - 
+--- Overall Performance ---
+INFO - [__main__] - ln:63 - Total prompts processed: 4
+INFO - [__main__] - ln:64 - Total new tokens generated across all batches: 80
+INFO - [__main__] - ln:65 - Total processing time for all batches: 12.0537 seconds
+INFO - [__main__] - ln:70 - Overall Average Latency: 0.1507 sec/token
+INFO - [__main__] - ln:71 - Overall Throughput: 6.64 tokens/sec
+INFO - [__main__] - ln:77 - Average of Batch Latencies: 0.1499 sec/token
+INFO - [__main__] - ln:79 - ------------------------------
