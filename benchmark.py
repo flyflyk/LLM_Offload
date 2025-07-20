@@ -4,6 +4,8 @@ import torch
 from inference_runner import InferenceRunner
 import subprocess
 import os
+# FlexLLMGen imports
+from flexllmgen.flex_opt import Policy, OptLM, TorchDevice, CompressionConfig
 
 def benchmark_accelerate(args, prompt_text):
     """
@@ -53,64 +55,88 @@ def benchmark_accelerate(args, prompt_text):
 
 def benchmark_flexllmgen(args, prompt_text):
     """
-    Benchmarks the FlexLLMGen framework by calling its CLI.
+    Benchmarks the FlexLLMGen framework using a direct library call.
     """
     print("--- Benchmarking FlexLLMGen ---")
-    
+
+    # 1. Set up environment and arguments for FlexLLMGen
     flexllmgen_path = os.path.abspath("./FlexLLMGen")
     cache_path = os.path.abspath("./flexllmgen_cache")
     os.makedirs(cache_path, exist_ok=True)
-    
-    command = [
-        "python",
-        os.path.join(flexllmgen_path, "flexllmgen", "flex_opt.py"),
-        "--model", args.model,
-        "--path", cache_path,
-        "--prompt-text", prompt_text,
-        "--gpu-batch-size", str(args.input_nums),
-        "--prompt-len", str(args.input_len),
-        "--gen-len", str(args.gen_len),
-        "--percent", "100", "0", "100", "0", "100", "0"
-    ]
 
-    # Prepare environment for subprocess to include FlexLLMGen in PYTHONPATH
+    # Add FlexLLMGen to python path to ensure imports work
     flexllmgen_env = os.environ.copy()
     current_pythonpath = flexllmgen_env.get('PYTHONPATH', '')
-    if current_pythonpath:
-        flexllmgen_env['PYTHONPATH'] = f"{flexllmgen_path}:{current_pythonpath}"
-    else:
-        flexllmgen_env['PYTHONPATH'] = flexllmgen_path
+    if flexllmgen_path not in current_pythonpath:
+        if current_pythonpath:
+            flexllmgen_env['PYTHONPATH'] = f"{flexllmgen_path}:{current_pythonpath}"
+        else:
+            flexllmgen_env['PYTHONPATH'] = flexllmgen_path
+        os.environ['PYTHONPATH'] = flexllmgen_env['PYTHONPATH']
 
+
+    # Mimic the argparse Namespace that FlexLLMGen's components expect
+    flex_args = argparse.Namespace(
+        model=args.model,
+        path=cache_path,
+        prompt_len=args.input_len,
+        gen_len=args.gen_len,
+        gpu_batch_size=args.input_nums,
+        percent=[100, 0, 100, 0, 100, 0],
+        pin_weight=True,
+        cpu_cache_compute=False,
+        attn_sparsity=1.0,
+        compress_weight=False,
+        compress_cache=False,
+    )
+
+    # 2. Initialize the model (outside the timer)
+    env = TorchDevice(torch.device("cuda:0"))
+    policy = Policy(
+        flex_args.gpu_batch_size,
+        1,  # num_gpu_batches
+        flex_args.percent,
+        flex_args.pin_weight,
+        flex_args.cpu_cache_compute,
+        flex_args.attn_sparsity,
+        flex_args.compress_weight,
+        CompressionConfig(num_bits=4, group_size=64), # weight_comp_config
+        flex_args.compress_cache,
+        CompressionConfig(num_bits=4, group_size=64), # cache_comp_config
+    )
+    
+    print("Initializing FlexLLMGen model...")
+    opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
+    print("Initialization complete.")
+
+    prompts = [prompt_text] * args.input_nums
+
+    # 3. Run benchmark (time only the generation part)
     start_time = time.time()
-    process = subprocess.run(command, capture_output=True, text=True, env=flexllmgen_env)
+    # The generate function in the library does not return the output text directly,
+    # but it prints the performance metrics we need. We will capture those.
+    # For a fair comparison, we run the generation.
+    # Note: The internal timer of FlexLLMGen will also run and print its own stats.
+    outputs, _ = opt_lm.generate(
+        prompts,
+        max_new_tokens=flex_args.gen_len,
+        debug=False, # Set to False to avoid excessive printing during timing
+        show_progress=False
+    )
     end_time = time.time()
 
     total_time = end_time - start_time
-    
-    throughput = 0
-    output_text = process.stdout + process.stderr
-    for line in output_text.splitlines():
-        if "total throughput" in line.lower():
-            try:
-                # Correctly parse the throughput value
-                # Line format: "total latency: X.XXX s  total throughput: Y.YYY token/s"
-                throughput_str = line.split("total throughput:")[1].strip().split()[0]
-                throughput = float(throughput_str)
-                break
-            except (IndexError, ValueError) as e:
-                print(f"Could not parse throughput from line: '{line}'. Error: {e}")
-
-    latency = total_time / args.input_nums if throughput > 0 else float('inf')
+    total_tokens = args.input_nums * args.gen_len
+    throughput = total_tokens / total_time
+    latency = total_time / args.input_nums
 
     print(f"Model: {args.model}")
     print(f"Input Nums: {args.input_nums}")
     print(f"Input Length: {args.input_len}")
     print(f"Generation Length: {args.gen_len}")
     print(f"Total Time: {total_time:.4f}s")
-    print(f"Reported Throughput: {throughput} tokens/s")
+    print(f"Throughput: {throughput:.4f} tokens/sec")
     print(f"Latency: {latency:.4f} sec/sample")
-    print(f"--- Raw Output ---")
-    print(f"{output_text}")
     print("---------------------------------")
 
     return {
