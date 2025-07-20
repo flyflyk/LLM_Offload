@@ -67,20 +67,8 @@ def benchmark_flexllmgen(args, prompt_text):
     print("--- Benchmarking FlexLLMGen ---")
 
     # 1. Set up environment and arguments for FlexLLMGen
-    flexllmgen_path = os.path.abspath("./FlexLLMGen")
     cache_path = os.path.abspath("./flexllmgen_cache")
     os.makedirs(cache_path, exist_ok=True)
-
-    # Add FlexLLMGen to python path to ensure imports work
-    flexllmgen_env = os.environ.copy()
-    current_pythonpath = flexllmgen_env.get('PYTHONPATH', '')
-    if flexllmgen_path not in current_pythonpath:
-        if current_pythonpath:
-            flexllmgen_env['PYTHONPATH'] = f"{flexllmgen_path}:{current_pythonpath}"
-        else:
-            flexllmgen_env['PYTHONPATH'] = flexllmgen_path
-        os.environ['PYTHONPATH'] = flexllmgen_env['PYTHONPATH']
-
 
     # Mimic the argparse Namespace that FlexLLMGen's components expect
     flex_args = argparse.Namespace(
@@ -99,6 +87,14 @@ def benchmark_flexllmgen(args, prompt_text):
 
     # 2. Initialize the model (outside the timer)
     env = TorchDevice(torch.device("cuda:0"))
+
+    # Create dummy compression configs as compression is disabled for this benchmark
+    # This mimics the logic from the original flex_opt.py script
+    weight_comp_config = CompressionConfig(num_bits=16, group_size=256, 
+        group_dim=1, symmetric=False)
+    cache_comp_config = CompressionConfig(num_bits=16, group_size=256,
+        group_dim=2, symmetric=False)
+
     policy = Policy(
         flex_args.gpu_batch_size,
         1,  # num_gpu_batches
@@ -107,9 +103,9 @@ def benchmark_flexllmgen(args, prompt_text):
         flex_args.cpu_cache_compute,
         flex_args.attn_sparsity,
         flex_args.compress_weight,
-        CompressionConfig(num_bits=4, group_size=64), # weight_comp_config
+        weight_comp_config,
         flex_args.compress_cache,
-        CompressionConfig(num_bits=4, group_size=64), # cache_comp_config
+        cache_comp_config,
     )
     
     print("Initializing FlexLLMGen model...")
@@ -120,10 +116,6 @@ def benchmark_flexllmgen(args, prompt_text):
 
     # 3. Run benchmark (time only the generation part)
     start_time = time.time()
-    # The generate function in the library does not return the output text directly,
-    # but it prints the performance metrics we need. We will capture those.
-    # For a fair comparison, we run the generation.
-    # Note: The internal timer of FlexLLMGen will also run and print its own stats.
     outputs, _ = opt_lm.generate(
         prompts,
         max_new_tokens=flex_args.gen_len,
