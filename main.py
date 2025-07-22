@@ -132,7 +132,7 @@ def run_accelerate_benchmark(args, runner, prompt_text):
     prompts = [prompt_text] * args.input_nums
 
     start_time = time.time()
-    runner.run_inference(prompts, max_new_tokens=args.gen_len)
+    runner.run_accelerate(prompts, max_new_tokens=args.gen_len)
     end_time = time.time()
 
     total_time = end_time - start_time
