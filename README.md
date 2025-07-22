@@ -43,11 +43,11 @@
 
 `main.py` 是主要執行腳本，提供兩種操作模式：`inference` 和 `benchmark`。
 
-### 1. 設定檔 (`inference_engine/config.py`)
+### 1. Accelerate 設定檔 (`Accelerate/config.py`)
 
-先設定 `inference_engine/config.py` 檔案。
+先設定 `Accelerate/config.py` 檔案。
 
-*   `ENABLE_STREAMING`: 是否啟用串流輸出模式。
+*   `ENABLE_STREAMING`: 是否啟用自動 offload 模式。
 *   `ENABLE_KV_OFFLOAD`: 是否啟用 KV Cache Offload。
 *   `OFFLOAD_FOLDER`: 權重 offload 的儲存路徑。
 *   `OFFLOAD_FOLDER_MAX_CPU_OFFLOAD_RAM_GB`: Offload 到 CPU RAM 的最大限制。
@@ -79,7 +79,7 @@ python main.py --mode inference --model [MODEL_NAME] [OPTIONS]
 python main.py --mode inference --model facebook/opt-1.3b
 
 # 設定 input-len、生成長度和批次大小
-python main.py --mode inference --model facebook/opt-1.3b --input-len 64 --gen-len 64 --input-nums 2
+python main.py --mode accelerate --model facebook/opt-1.3b --input-len 64 --gen-len 64 --input-nums 2
 ```
 
 ### 3. 基準測試模式 (`benchmark`)

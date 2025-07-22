@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 from Accelerate import config
 from Accelerate.logger import setup_logging
-from Accelerate.infer_runner import InferenceRunner
+from Accelerate.accelerate_runner import InferenceRunner
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -168,7 +168,7 @@ def run_flexllmgen_benchmark(args, opt_lm, prompt_text):
 
 # --- Main Execution Modes ---
 
-def run_inference_mode(args):
+def run_accelerate_mode(args):
     """Runs the standard inference mode using settings from command-line arguments."""
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
 
-    if args.mode == 'inference':
-        run_inference_mode(args)
+    if args.mode == 'accelerate':
+        run_accelerate_mode(args)
     elif args.mode == 'benchmark':
         run_benchmark_mode(args)

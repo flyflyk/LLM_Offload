@@ -57,7 +57,7 @@ class InferenceRunner:
         if not prompts or not all(prompts):
             raise ValueError("Prompt list cannot be empty or contain empty prompts.")
 
-        logger.info(f"Running inference for batch of {len(prompts)} prompts.")
+        logger.info(f"Running accelerate for batch of {len(prompts)} prompts.")
 
         use_streamer_for_this_run = self.streamer and len(prompts) == 1
 
