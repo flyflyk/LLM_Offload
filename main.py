@@ -82,11 +82,12 @@ def initialize_accelerate(args, log_file):
         for name, param in runner.model.named_parameters():
             print(f"  {name}: {param.device}", file=log_file)
     print("-" * 30, file=log_file)
-    return runner
+    return runner, runner.model_load_time
 
 def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model ---")
+    start_time = time.time()
     cache_path = os.path.abspath("./flexllmgen_cache")
     offload_dir = os.path.abspath("./flexllmgen_offload")
     os.makedirs(cache_path, exist_ok=True)
@@ -120,9 +121,11 @@ def initialize_flexllmgen(args, log_file):
     )
     
     opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
-    print("FlexLLMGen model initialized.")
+    end_time = time.time()
+    load_time = end_time - start_time
+    print(f"FlexLLMGen model initialized in {load_time:.4f}s.")
     print_flexllmgen_distribution(opt_lm, log_file)
-    return opt_lm, env
+    return opt_lm, env, load_time
 
 # --- Benchmarking Functions ---
 
@@ -245,13 +248,14 @@ def run_benchmark_mode(args):
         print(f"Model: {args.model}, Input Nums: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
         print(f"Accelerate Model Load Time: {accelerate_load_time:.4f}s")
         print(f"FlexLLMGen Model Load Time: {flexllmgen_load_time:.4f}s")
-        print("| Framework    | Throughput (tokens/s) | Latency (s/sample) |")
-        print("|--------------|-----------------------|--------------------|")
+        print("| Framework    | Throughput (tokens/s) | Latency (s/sample) | Model Load Time (s) |")
+        print("|--------------|-----------------------|--------------------|---------------------|")
         for res in results:
             throughput_str = f"{res['throughput']:.2f}"
             latency_str = f"{res['latency']:.4f}"
-            print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} |")
-        print("----------------------------------------------------------")
+            load_time_str = f"{accelerate_load_time if res['framework'] == 'Accelerate' else flexllmgen_load_time:.4f}"
+            print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} | {load_time_str:<19} |")
+        print("--------------------------------------------------------------------------------")
 
         # --- 4. Cleanup Phase ---
         print("Cleaning up FlexLLMGen resources...")
