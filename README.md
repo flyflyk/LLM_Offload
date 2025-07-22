@@ -46,7 +46,7 @@ pip install -r requirements.txt
 
 ---
 
-### accelerate 模式
+### `accelerate` 模式
 
 此模式僅使用 Accelerate 框架進行推理。
 
@@ -74,7 +74,7 @@ python main.py --mode accelerate --model facebook/opt-1.3b --input-len 64 --gen-
 ```
 ---
 
-### benchmark 模式
+### `benchmark` 模式
 
 此模式會比較 **Accelerate** 和 **FlexLLMGen** 兩個框架的推理吞吐量，**Accelerate** 的行為會參照 `config.py` 的設定，而共用參數則由命令行傳入。
 

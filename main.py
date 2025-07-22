@@ -194,7 +194,10 @@ def run_accelerate_mode(args):
         if not batch_prompts: continue
 
         logger.info(f"Processing batch {i // args.input_nums + 1} with {len(batch_prompts)} prompts...")
-        runner.run_inference(batch_prompts, max_new_tokens=args.gen_len)
+        generated_texts = runner.run_accelerate(batch_prompts, max_new_tokens=args.gen_len)
+        if generated_texts:
+            for i, text in enumerate(generated_texts):
+                logger.info(f"Generated text for prompt {i+1}: {text}")
 
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
