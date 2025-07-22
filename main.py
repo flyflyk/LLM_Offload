@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 from Accelerate import config
 from Accelerate.logger import setup_logging
-from Accelerate.accelerate_runner import InferenceRunner
+from Accelerate.accelerate_runner import AccelerateRunner
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -68,7 +68,7 @@ def initialize_accelerate(args, log_file):
     """Loads the Accelerate model and returns the runner object."""
     print("--- Initializing Accelerate Model ---")
     setattr(config, 'IS_BENCHMARK', True)
-    runner = InferenceRunner(
+    runner = AccelerateRunner(
         model_name=args.model,
         config=config,
         p_type=torch.float16
@@ -169,7 +169,7 @@ def run_flexllmgen_benchmark(args, opt_lm, prompt_text):
 # --- Main Execution Modes ---
 
 def run_accelerate_mode(args):
-    """Runs the standard inference mode using settings from command-line arguments."""
+    """Runs the standard accelerate mode using settings from command-line arguments."""
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ def run_accelerate_mode(args):
     logger.info(f"Using device: {config.DEVICE}")
     logger.info(f"Batch size: {args.input_nums}")
 
-    runner = InferenceRunner(model_name=args.model, config=config)
+    runner = AccelerateRunner(model_name=args.model, config=config)
 
     natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
     prompt_words = natural_prompt_base.split()
