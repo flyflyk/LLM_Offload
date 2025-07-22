@@ -59,7 +59,7 @@ class AccelerateRunner:
         else:
              logger.info(f"Model loaded on device: {self.device}")
 
-    def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> List[str]:
+    def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:
         if not prompts or not all(prompts):
             raise ValueError("Prompt list cannot be empty or contain empty prompts.")
 
@@ -86,17 +86,24 @@ class AccelerateRunner:
         if use_streamer_for_this_run:
             generation_kwargs["streamer"] = self.streamer
 
+        start_time = time.time()
         with torch.no_grad():
             generation_output = self.model.generate(
                 **inputs,
                 **generation_kwargs
             )
+        end_time = time.time()
+        
+        inference_time = end_time - start_time
         
         if use_streamer_for_this_run:
-            return [""] * len(prompts) 
+            generated_texts = [""] * len(prompts) 
+        else:
+            input_token_len = inputs.input_ids.shape[1]
+            generated_tokens = generation_output[:, input_token_len:]
+            generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
 
-        input_token_len = inputs.input_ids.shape[1]
-        generated_tokens = generation_output[:, input_token_len:]
-        generated_texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
-
-        return generated_texts
+        return {
+            "generated_texts": generated_texts,
+            "inference_time": inference_time
+        }
