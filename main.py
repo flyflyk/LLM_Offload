@@ -183,11 +183,15 @@ def run_accelerate_mode(args):
 
     runner = AccelerateRunner(model_name=args.model, config=config)
 
-    natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
+    natural_prompt_base = "Infinitely write a never-ending story for the following prompt. "\
+        "The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse."
+    
     prompt_words = natural_prompt_base.split()
     multiplier = (args.input_len // len(prompt_words)) + 1
     prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
     prompts = [prompt_text] * args.input_nums
+
+    start_time = time.time()
 
     for i in range(0, len(prompts), args.input_nums):
         batch_prompts = prompts[i : i + args.input_nums]
@@ -199,6 +203,16 @@ def run_accelerate_mode(args):
             for i, text in enumerate(generated_texts):
                 logger.info(f"Generated text for prompt {i+1}: {text}")
 
+    end_time = time.time()
+    total_time = end_time - start_time
+    total_tokens = args.input_nums * args.gen_len
+    throughput = total_tokens / total_time
+    latency = total_time / args.input_nums
+
+    logger.info(f"--- Performance Metrics ---")
+    logger.info(f"Total Time: {total_time:.4f}s")
+    logger.info(f"Throughput: {throughput:.2f} tokens/sec")
+    logger.info(f"Latency: {latency:.4f} sec/sample")
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
 def run_benchmark_mode(args):
