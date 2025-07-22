@@ -219,7 +219,7 @@ def run_accelerate_mode(args):
     logger.info(f"--- Performance Metrics ---")
     logger.info(f"Total Inference Time: {total_inference_time:.4f}s")
     logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-    logger.info(f"Latency: {latency:.4f} sec/sample")
+    logger.info(f"Latency: {latency:.4f} sec/batch")
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
 def run_benchmark_mode(args):

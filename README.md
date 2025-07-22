@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 ## 使用方法
 
-`main.py` 是主要執行腳本，提供兩種操作模式：`accelerate` 和 `benchmark`。
+`main.py` 是主要執行腳本，提供兩種操作模式： `accelerate` 和 `benchmark`。
 
 ### Accelerate 設定檔 (`Accelerate/config.py`)
 
@@ -53,10 +53,10 @@ pip install -r requirements.txt
 **執行指令:**
 
 ```bash
-python main.py --mode accelerate --model [MODEL_NAME] [OPTIONS]
+python main.py --mode accelerate [OPTIONS]
 ```
 
-**參數:**
+**[OPTIONS]:**
 
 *   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
 *   `--input-len`: 自動生成輸入提示的長度 (token 數) (預設: `8`)。
@@ -67,7 +67,7 @@ python main.py --mode accelerate --model [MODEL_NAME] [OPTIONS]
 
 ```bash
 # 使用預設的 input-len 進行推理
-python main.py --mode accelerate --model facebook/opt-1.3b
+python main.py --mode accelerate
 
 # 設定 input-len、生成長度和批次大小
 python main.py --mode accelerate --model facebook/opt-1.3b --input-len 64 --gen-len 64 --input-nums 2
@@ -76,15 +76,15 @@ python main.py --mode accelerate --model facebook/opt-1.3b --input-len 64 --gen-
 
 ### `benchmark` 模式
 
-此模式會比較 **Accelerate** 和 **FlexLLMGen** 兩個框架的推理吞吐量，**Accelerate** 的行為會參照 `config.py` 的設定，而共用參數則由命令行傳入。
+此模式會比較 Accelerate 和 FlexLLMGen 兩個框架的推理吞吐量， Accelerate 的行為會參照 `config.py` 的設定，而共用參數則由命令行傳入。
 
 **執行指令:**
 
 ```bash
-python main.py --mode benchmark --model [MODEL_NAME] [OPTIONS]
+python main.py --mode benchmark [OPTIONS]
 ```
 
-**參數:**
+**[OPTIONS]:**
 
 *   `--model`: 指定要測試的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
 *   `--input-nums`: 輸入的數量 (批次大小) (預設: `1`)。
