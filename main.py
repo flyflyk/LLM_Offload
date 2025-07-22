@@ -7,9 +7,9 @@ import numpy as np
 import logging
 from transformers import AutoTokenizer
 
-from inference_engine import config
-from inference_engine.logger import setup_logging
-from inference_engine.inference_runner import InferenceRunner
+from Accelerate import config
+from Accelerate.logger import setup_logging
+from Accelerate.infer_runner import InferenceRunner
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -168,8 +168,8 @@ def run_flexllmgen_benchmark(args, opt_lm, prompt_text):
 
 # --- Main Execution Modes ---
 
-def run_inference_mode():
-    """Runs the standard inference mode using settings from config.py."""
+def run_inference_mode(args):
+    """Runs the standard inference mode using settings from command-line arguments."""
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
 
@@ -177,17 +177,24 @@ def run_inference_mode():
     kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
     current_mode = f"{streaming_mode}{kv_offload_mode}"
     logger.info(f"--- Starting Execution ({current_mode}) ---")
+    logger.info(f"Model: {args.model}")
     logger.info(f"Using device: {config.DEVICE}")
-    logger.info(f"Batch size: {config.BATCH_SIZE}")
+    logger.info(f"Batch size: {args.input_nums}")
 
-    runner = InferenceRunner(model_name=config.CHOSEN_MODEL, config=config)
+    runner = InferenceRunner(model_name=args.model, config=config)
 
-    for i in range(0, len(config.PROMPT_LIST), config.BATCH_SIZE):
-        batch_prompts = config.PROMPT_LIST[i : i + config.BATCH_SIZE]
+    natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
+    prompt_words = natural_prompt_base.split()
+    multiplier = (args.input_len // len(prompt_words)) + 1
+    prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
+    prompts = [prompt_text] * args.input_nums
+
+    for i in range(0, len(prompts), args.input_nums):
+        batch_prompts = prompts[i : i + args.input_nums]
         if not batch_prompts: continue
 
-        logger.info(f"Processing batch {i // config.BATCH_SIZE + 1} with {len(batch_prompts)} prompts...")
-        runner.run_inference(batch_prompts, max_new_tokens=config.MAX_TOKENS)
+        logger.info(f"Processing batch {i // args.input_nums + 1} with {len(batch_prompts)} prompts...")
+        runner.run_inference(batch_prompts, max_new_tokens=args.gen_len)
 
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
@@ -234,16 +241,26 @@ def run_benchmark_mode(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference or benchmark for LLMs.")
+    
+    # --- Common Arguments ---
     parser.add_argument("--mode", type=str, default="inference", choices=["inference", "benchmark"], help="Execution mode.")
-    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to benchmark.")
-    parser.add_argument("--input-nums", type=int, default=4, help="Number of inputs (batch size).")
-    parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
+    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
     parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
-    parser.add_argument("--log-file", type=str, default=None, help="Path to a file to save the weight distribution logs.")
+    parser.add_argument("--input-nums", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
+    
+    # --- Common Arguments ---
+    parser.add_argument("--mode", type=str, default="inference", choices=["inference", "benchmark"], help="Execution mode.")
+    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
+    parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
+    parser.add_argument("--input-nums", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
+    
+    # --- Inference/Benchmark Mode Specific Arguments ---
+    parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens. Used for prompt generation in inference mode and for benchmark mode.")
+    parser.add_argument("--log-file", type=str, default=None, help="Path to a file to save the weight distribution logs for benchmark mode.")
     
     args = parser.parse_args()
 
     if args.mode == 'inference':
-        run_inference_mode()
+        run_inference_mode(args)
     elif args.mode == 'benchmark':
         run_benchmark_mode(args)
