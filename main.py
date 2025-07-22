@@ -242,6 +242,12 @@ def run_benchmark_mode(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference or benchmark for LLMs.")
     
+    # --- Common Arguments ---
+    parser.add_argument("--mode", type=str, default="inference", choices=["inference", "benchmark"], help="Execution mode.")
+    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
+    parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
+    parser.add_argument("--input-nums", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
+    
     # --- Inference/Benchmark Mode Specific Arguments ---
     parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens. Used for prompt generation in inference mode and for benchmark mode.")
     parser.add_argument("--log-file", type=str, default=None, help="Path to a file to save the weight distribution logs for benchmark mode.")
