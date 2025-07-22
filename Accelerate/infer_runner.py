@@ -59,6 +59,8 @@ class InferenceRunner:
 
         logger.info(f"Running inference for batch of {len(prompts)} prompts.")
 
+        use_streamer_for_this_run = self.streamer and len(prompts) == 1
+
         target_device = self.model.device
         inputs = self.tokenizer(
             prompts,
@@ -75,7 +77,7 @@ class InferenceRunner:
             "top_k": 50,
         }
         
-        if self.streamer:
+        if use_streamer_for_this_run:
             generation_kwargs["streamer"] = self.streamer
 
         with torch.no_grad():
@@ -84,7 +86,7 @@ class InferenceRunner:
                 **generation_kwargs
             )
         
-        if self.streamer:
+        if use_streamer_for_this_run:
             return [""] * len(prompts) 
 
         input_token_len = inputs.input_ids.shape[1]
