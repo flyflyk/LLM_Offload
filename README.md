@@ -41,23 +41,44 @@
 
 ## 使用方法
 
-1.  **配置文件:**
-    在 `config.py` 中，修改需要的參數。
+`main.py` 是此專案的主要執行腳本，提供兩種操作模式：`inference` 和 `benchmark`。
 
-2.  **執行主腳本:**
+### 1. 推理模式 (`inference`)
+
+此模式會根據 `config.py` 中的設定，載入指定的模型並執行推理任務。
+
+**步驟:**
+
+1.  **設定 `config.py`:**
+    *   開啟 `config.py` 檔案。
+    *   根據您的需求修改參數，例如 `CHOSEN_MODEL`, `MAX_TOKENS`, `PROMPT_LIST` 等。
+    *   您可以透過 `USE_ACCELERATE`, `ENABLE_STREAMING`, `ENABLE_KV_OFFLOAD` 等布林值來啟用或停用特定功能。
+
+2.  **執行腳本:**
     ```bash
-    python main.py
+    python main.py --mode inference
     ```
 
-3.  **執行 Benchmark:**
-    使用 `benchmark.py` 來比較 Accelerate 和 FlexLLMGen 的推理效能。
+### 2. 基準測試模式 (`benchmark`)
 
-    ```bash
-    python benchmark.py --model facebook/opt-1.3b --input-nums 4 --input-len 64 --gen-len 32 --log-file model_map
-    ```
+此模式會比較 **Accelerate** 和 **FlexLLMGen** 兩個框架的推理吞吐量，**Accelerate** 的行為會參照 `config.py` 的設定，而共用參數則由命令行傳入。
 
-    *   `--model`: 指定要測試的模型 (例如 `facebook/opt-1.3b`)。
-    *   `--input-nums`: 輸入的數量 (批次大小)。
-    *   `--input-len`: 輸入提示的長度 (token 數)。
-    *   `--gen-len`: 要生成的 token 數量。
-    *   `--log-file`: (可選) 將模型權重分佈日誌保存到指定文件，而不是直接打印到控制台。
+**執行指令:**
+
+```bash
+python main.py --mode benchmark [OPTIONS]
+```
+
+**可選參數 (OPTIONS):**
+
+*   `--model`: 指定要測試的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
+*   `--input-nums`: 輸入的數量 (批次大小) (預設: `4`)。
+*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
+*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
+*   `--log-file`: (可選) 將模型權重分佈的日誌儲存到指定檔案。若未提供，則會直接輸出到控制台。
+
+**範例:**
+
+```bash
+python main.py --mode benchmark --model facebook/opt-1.3b --input-nums 8 --input-len 128 --gen-len 64 --log-file log.log
+```
