@@ -53,7 +53,7 @@ class AccelerateRunner:
         else:
              logger.info(f"Model loaded on device: {self.device}")
 
-    def run_inference(self, prompts: List[str], max_new_tokens: int = 50) -> List[str]:
+    def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> List[str]:
         if not prompts or not all(prompts):
             raise ValueError("Prompt list cannot be empty or contain empty prompts.")
 
