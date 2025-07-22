@@ -1,5 +1,6 @@
 import torch
 import logging
+import time
 from typing import List
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 from accelerate import Accelerator
@@ -14,8 +15,10 @@ class AccelerateRunner:
         self.use_accelerate = getattr(config, 'USE_ACCELERATE', False)
         self.accelerator = None
         self.streamer = None
+        self.model_load_time = 0
 
         logger.info(f"Loading model '{self.model_name}'...")
+        start_time = time.time()
         
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         if self.tokenizer.pad_token is None:
@@ -42,12 +45,15 @@ class AccelerateRunner:
         if self.use_accelerate:
             self.model = self.accelerator.prepare(self.model)
         
+        end_time = time.time()
+        self.model_load_time = end_time - start_time
+
         if getattr(config, 'ENABLE_STREAMING', False):
             # For benchmark mode, we don't want to stream to stdout
             if not getattr(config, 'IS_BENCHMARK', False):
                 self.streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-        logger.info(f"Model '{self.model_name}' loaded.")
+        logger.info(f"Model '{self.model_name}' loaded in {self.model_load_time:.4f} seconds.")
         if hasattr(self.model, 'hf_device_map'):
              logger.info(f"Model device map: {self.model.hf_device_map}")
         else:

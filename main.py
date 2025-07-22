@@ -208,8 +208,8 @@ def run_benchmark_mode(args):
     try:
         # --- 1. Initialization Phase ---
         print("Initializing models... This may take a moment.")
-        accelerate_model = initialize_accelerate(args, log_file=log_file_handle)
-        flexllmgen_model, flexllmgen_env = initialize_flexllmgen(args, log_file=log_file_handle)
+        accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
+        flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
         print("All models initialized. Starting benchmarks.")
 
         # --- 2. Benchmarking Phase ---
@@ -225,6 +225,8 @@ def run_benchmark_mode(args):
         # --- 3. Print Summary ---
         print("--- Benchmark Summary ---")
         print(f"Model: {args.model}, Input Nums: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
+        print(f"Accelerate Model Load Time: {accelerate_load_time:.4f}s")
+        print(f"FlexLLMGen Model Load Time: {flexllmgen_load_time:.4f}s")
         print("| Framework    | Throughput (tokens/s) | Latency (s/sample) |")
         print("|--------------|-----------------------|--------------------|")
         for res in results:
