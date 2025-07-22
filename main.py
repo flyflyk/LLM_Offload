@@ -191,26 +191,30 @@ def run_accelerate_mode(args):
     prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
     prompts = [prompt_text] * args.input_nums
 
-    start_time = time.time()
+    total_inference_time = 0
 
     for i in range(0, len(prompts), args.input_nums):
         batch_prompts = prompts[i : i + args.input_nums]
         if not batch_prompts: continue
 
         logger.info(f"Processing batch {i // args.input_nums + 1} with {len(batch_prompts)} prompts...")
-        generated_texts = runner.run_accelerate(batch_prompts, max_new_tokens=args.gen_len)
-        if generated_texts:
-            for i, text in enumerate(generated_texts):
-                logger.info(f"Generated text for prompt {i+1}: {text}")
+        result = runner.run_accelerate(batch_prompts, max_new_tokens=args.gen_len)
+        total_inference_time += result["inference_time"]
+        
+        if result and result["generated_texts"]:
+            for i, text in enumerate(result["generated_texts"]):
+                if runner.streamer and len(batch_prompts) == 1:
+                    logger.info(f"Generated text for prompt {i+1} (streamed).")
+                else:
+                    logger.info(f"Generated text for prompt {i+1}: {text}")
 
-    end_time = time.time()
-    total_time = end_time - start_time
     total_tokens = args.input_nums * args.gen_len
-    throughput = total_tokens / total_time
-    latency = total_time / args.input_nums
+    # Avoid division by zero
+    throughput = total_tokens / total_inference_time if total_inference_time > 0 else 0
+    latency = total_inference_time / args.input_nums
 
     logger.info(f"--- Performance Metrics ---")
-    logger.info(f"Total Time: {total_time:.4f}s")
+    logger.info(f"Total Inference Time: {total_inference_time:.4f}s")
     logger.info(f"Throughput: {throughput:.2f} tokens/sec")
     logger.info(f"Latency: {latency:.4f} sec/sample")
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
