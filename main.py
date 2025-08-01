@@ -6,6 +6,8 @@ import sys
 import numpy as np
 import logging
 from transformers import AutoTokenizer
+from FlexLLMGen_wrap.flex_runner import FlexRunner
+
 
 from Accelerate import config
 from Accelerate.logger import setup_logging
@@ -222,6 +224,53 @@ def run_accelerate_mode(args):
     logger.info(f"Latency: {latency:.4f} sec/batch")
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
+def run_flexllmgen_mode(args):
+    """Runs the FlexLLMGen mode using standard args format."""
+    from FlexLLMGen_wrap.flex_runner import FlexRunner
+    setup_logging()
+    logger = logging.getLogger(__name__)
+
+    logger.info("--- Starting Execution (FlexLLMGen) ---")
+    logger.info(f"Model: {args.model}")
+    logger.info(f"Using device: cuda")
+    logger.info(f"Batch size: {args.input_nums}")
+
+    # 自動產生 prompt（與 Accelerate 相同）
+    base_prompt = "Infinitely write a never-ending story for the following prompt. "\
+                  "The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse."
+    prompt_words = base_prompt.split()
+    multiplier = (args.input_len // len(prompt_words)) + 1
+    prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
+    prompts = [prompt_text] * args.input_nums
+
+    runner = FlexRunner(args.model, prompt=prompt_text, device="cuda")
+
+    total_inference_time = 0
+
+    for i in range(0, len(prompts), args.input_nums):
+        batch_prompts = prompts[i: i + args.input_nums]
+        if not batch_prompts:
+            continue
+
+        logger.info(f"Processing batch {i // args.input_nums + 1} with {len(batch_prompts)} prompts...")
+        result = runner.run(max_new_tokens=args.gen_len)
+        total_inference_time += result["inference_time"]
+
+        if result and result["generated_texts"]:
+            for i, text in enumerate(result["generated_texts"]):
+                logger.info(f"Generated text for prompt {i+1}: {text}")
+
+    total_tokens = args.input_nums * args.gen_len
+    throughput = total_tokens / total_inference_time if total_inference_time > 0 else 0
+    latency = total_inference_time / args.input_nums
+
+    logger.info("--- Performance Metrics ---")
+    logger.info(f"Total Inference Time: {total_inference_time:.4f}s")
+    logger.info(f"Throughput: {throughput:.2f} tokens/sec")
+    logger.info(f"Latency: {latency:.4f} sec/batch")
+    logger.info("--- Execution Finished Successfully (FlexLLMGen) ---")
+
+
 def run_benchmark_mode(args):
     """Runs the benchmark mode to compare Accelerate and FlexLLMGen."""
     log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
@@ -270,7 +319,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run accelerate or benchmark for LLMs.")
     
     # --- Common Arguments ---
-    parser.add_argument("--mode", type=str, default="accelerate", choices=["accelerate", "benchmark"], help="Execution mode.")
+    parser.add_argument("--mode", type=str, default="accelerate", choices=["accelerate", "benchmark", "flexllmgen"], help="Execution mode.")
     parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
     parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
     parser.add_argument("--input-nums", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
@@ -285,3 +334,5 @@ if __name__ == "__main__":
         run_accelerate_mode(args)
     elif args.mode == 'benchmark':
         run_benchmark_mode(args)
+    elif args.mode == 'flexllmgen':
+        run_flexllmgen_mode(args)
