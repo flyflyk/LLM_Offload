@@ -519,7 +519,7 @@ def run_benchmark_mode(args):
         # --- 3. Cleanup Phase ---
         if autoflex_env:
             print("Cleaning up AutoFlex resources...")
-            autoflex_env.close_copy_threads()
+            # autoflex_env.close_copy_threads()
         if args.log_file and log_file_handle is not sys.stdout:
             log_file_handle.close()
         print("Benchmark finished.")
