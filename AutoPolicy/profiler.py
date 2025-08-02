@@ -56,8 +56,17 @@ def get_hardware_profile(profile_path: str = "AutoPolicy/hardware_profile.json",
     """
     if not force_rerun and os.path.exists(profile_path):
         print("Loading cached hardware profile...")
-        with open(profile_path, 'r') as f:
-            return json.load(f)
+        try:
+            with open(profile_path, 'r') as f:
+                # Check if file is empty before trying to load
+                if os.path.getsize(profile_path) > 0:
+                    return json.load(f)
+                else:
+                    print("Warning: Hardware profile cache file is empty. Re-running profiler.")
+        except json.JSONDecodeError:
+            print("Warning: Could not decode hardware profile cache. Re-running profiler.")
+        except Exception as e:
+            print(f"Warning: An unexpected error occurred while reading the cache file ({e}). Re-running profiler.")
 
     print("Running hardware profiling... (This may take a moment)")
     

@@ -7,7 +7,7 @@ __pycache__/
 env/
 venv/
 
-# Offloading and cache directories
+# Config and cache
 offload_dir/
 flexllmgen_offload/
 flexllmgen_cache/
