@@ -32,7 +32,7 @@ from AutoPolicy.optimizer import find_best_policy
 
 # --- Helper Functions ---
 
-def check_vram_availability(args):
+def check_vram(args):
     """Checks if the model weights can fit into the available VRAM."""
     if not torch.cuda.is_available():
         print("CUDA is not available. Cannot perform VRAM check.")
@@ -99,7 +99,7 @@ def print_flexllmgen_distribution(opt_lm, log_file):
 
 # --- Initialization Functions ---
 
-def initialize_accelerate(args, log_file):
+def init_accelerate(args, log_file):
     """Loads the Accelerate model and returns the runner object."""
     print("--- Initializing Accelerate Model ---")
     setattr(config, 'IS_BENCHMARK', True)
@@ -119,27 +119,29 @@ def initialize_accelerate(args, log_file):
     print("-" * 30, file=log_file)
     return runner, runner.model_load_time
 
-def initialize_flexllmgen(args, log_file):
-    """Loads the FlexLLMGen model and returns the model and environment objects."""
-    print("--- Initializing FlexLLMGen Model (All-GPU Policy) ---")
-    # Default "all-on-GPU" policy
-    policy = Policy(
-        gpu_batch_size=args.input_nums, num_gpu_batches=1,
-        w_gpu_percent=100, w_cpu_percent=0,
-        cache_gpu_percent=100, cache_cpu_percent=0,
-        act_gpu_percent=100, act_cpu_percent=0,
-        overlap=True, sep_layer=True, pin_weight=True,
-        cpu_cache_compute=False, attn_sparsity=1.0,
-        compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
-        compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
-    )
-    
-    opt_lm, env, load_time = initialize_flexllmgen_with_policy(args, log_file, policy, "FlexLLMGen (All-GPU)")
-    return opt_lm, env, load_time
+def init_flexgen(args, log_file, policy=None, framework_name=None):
+    """
+    Initializes a FlexLLMGen model. If no policy is provided, a default 'all-on-GPU' policy is used.
+    """
+    # Set default policy and framework name if not provided
+    if policy is None:
+        framework_name = "FlexLLMGen (All-GPU)"
+        print("--- Initializing FlexLLMGen Model (All-GPU Policy) ---")
+        policy = Policy(
+            gpu_batch_size=args.input_nums, num_gpu_batches=1,
+            w_gpu_percent=100, w_cpu_percent=0,
+            cache_gpu_percent=100, cache_cpu_percent=0,
+            act_gpu_percent=100, act_cpu_percent=0,
+            overlap=True, sep_layer=True, pin_weight=True,
+            cpu_cache_compute=False, attn_sparsity=1.0,
+            compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
+            compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
+        )
+    else:
+        # If a policy is given, use the provided framework name or a default
+        framework_name = framework_name or "FlexLLMGen"
+        print(f"--- Initializing {framework_name} Model ---")
 
-def initialize_flexllmgen_with_policy(args, log_file, policy, framework_name):
-    """Loads the FlexLLMGen model with a specific policy."""
-    print(f"--- Initializing {framework_name} Model ---")
     start_time = time.time()
     cache_path = os.path.abspath("./flexllmgen_cache")
     offload_dir = os.path.abspath("./flexllmgen_offload")
@@ -148,7 +150,7 @@ def initialize_flexllmgen_with_policy(args, log_file, policy, framework_name):
 
     gpu = TorchDevice("cuda:0")
     cpu = TorchDevice("cpu")
-    disk = TorchDisk(offload_dir)
+    disk = TorchDisk(offload_dir, num_copy_threads=1)
     env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
     opt_lm = OptLM(args.model, env, cache_path, policy)
@@ -218,7 +220,7 @@ def run_autoflex_benchmark(args, log_file, prompt_text):
     print(f"  - Weight Placement (GPU/CPU/Disk %): {best_policy.w_gpu_percent} / {best_policy.w_cpu_percent} / {best_policy.w_disk_percent}")
     print(f"  - Cache Placement (GPU/CPU/Disk %): {best_policy.cache_gpu_percent} / {best_policy.cache_cpu_percent} / {best_policy.cache_disk_percent}")
 
-    opt_lm, env, load_time = initialize_flexllmgen_with_policy(args, log_file, best_policy, "AutoFlex")
+    opt_lm, env, load_time = init_flexgen(args, log_file, best_policy, "AutoFlex")
     
     results = run_flexllmgen_benchmark(args, opt_lm, prompt_text, framework_name="AutoFlex")
     
@@ -371,14 +373,14 @@ def run_autoflex_mode(args):
 
 def run_flexgen_mode(args):
     """Runs FlexLLMGen with a fixed 'all-on-GPU' policy."""
-    if not check_vram_availability(args):
+    if not check_vram(args):
         print("\n[ERROR] Not enough VRAM to run FlexGen with an all-on-GPU policy.", file=sys.stderr)
         print("Please try a smaller model or use '--mode autoflex' to enable automatic offloading.", file=sys.stderr)
         return
 
     log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
     try:
-        flexllmgen_model, flexllmgen_env, _ = initialize_flexllmgen(args, log_file=log_file_handle)
+        flexllmgen_model, flexllmgen_env, _ = init_flexgen(args, log_file=log_file_handle)
         
         natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
         prompt_words = natural_prompt_base.split()
@@ -466,8 +468,8 @@ def run_benchmark_mode(args):
         # --- Test Order: FlexGen (most VRAM sensitive) -> Accelerate -> AutoFlex (most robust) ---
 
         # 1. FlexLLMGen (All-GPU) - with pre-check
-        if check_vram_availability(args):
-            flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
+        if check_vram(args):
+            flexllmgen_model, flexllmgen_env, flexllmgen_load_time = init_flexgen(args, log_file=log_file_handle)
             results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
             load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
             
@@ -482,7 +484,7 @@ def run_benchmark_mode(args):
             print("\nSkipping FlexGen (All-GPU) benchmark due to insufficient VRAM.")
 
         # 2. Accelerate
-        accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
+        accelerate_model, accelerate_load_time = init_accelerate(args, log_file=log_file_handle)
         results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
         load_times["Accelerate"] = accelerate_load_time
         
