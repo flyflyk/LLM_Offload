@@ -94,44 +94,46 @@ def initialize_accelerate(args, log_file):
 
 def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
-    print("--- Initializing FlexLLMGen Model ---")
+    print("--- Initializing FlexLLMGen Model (All-GPU Policy) ---")
     start_time = time.time()
     cache_path = os.path.abspath("./flexllmgen_cache")
     offload_dir = os.path.abspath("./flexllmgen_offload")
     os.makedirs(cache_path, exist_ok=True)
     os.makedirs(offload_dir, exist_ok=True)
 
-    flex_args = argparse.Namespace(
-        model=args.model, path=cache_path, prompt_len=args.input_len,
-        gen_len=args.gen_len, gpu_batch_size=args.input_nums,
-        percent=[100, 0, 100, 0, 100, 0], pin_weight=True,
+    # Default "all-on-GPU" policy
+    policy = Policy(
+        gpu_batch_size=args.input_nums, num_gpu_batches=1,
+        w_gpu_percent=100, w_cpu_percent=0,
+        cache_gpu_percent=100, cache_cpu_percent=0,
+        act_gpu_percent=100, act_cpu_percent=0,
+        overlap=True, sep_layer=True, pin_weight=True,
         cpu_cache_compute=False, attn_sparsity=1.0,
-        compress_weight=False, compress_cache=False,
+        compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
+        compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
     )
+    
+    opt_lm, env, load_time = initialize_flexllmgen_with_policy(args, log_file, policy, "FlexLLMGen (All-GPU)")
+    return opt_lm, env, load_time
+
+def initialize_flexllmgen_with_policy(args, log_file, policy, framework_name):
+    """Loads the FlexLLMGen model with a specific policy."""
+    print(f"--- Initializing {framework_name} Model ---")
+    start_time = time.time()
+    cache_path = os.path.abspath("./flexllmgen_cache")
+    offload_dir = os.path.abspath("./flexllmgen_offload")
+    os.makedirs(cache_path, exist_ok=True)
+    os.makedirs(offload_dir, exist_ok=True)
 
     gpu = TorchDevice("cuda:0")
     cpu = TorchDevice("cpu")
     disk = TorchDisk(offload_dir)
     env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
-    weight_comp_config = CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False)
-    cache_comp_config = CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False)
-
-    policy = Policy(
-        gpu_batch_size=flex_args.gpu_batch_size, num_gpu_batches=1,
-        w_gpu_percent=flex_args.percent[0], w_cpu_percent=flex_args.percent[1],
-        cache_gpu_percent=flex_args.percent[2], cache_cpu_percent=flex_args.percent[3],
-        act_gpu_percent=flex_args.percent[4], act_cpu_percent=flex_args.percent[5],
-        overlap=True, sep_layer=True, pin_weight=flex_args.pin_weight,
-        cpu_cache_compute=flex_args.cpu_cache_compute, attn_sparsity=flex_args.attn_sparsity,
-        compress_weight=flex_args.compress_weight, comp_weight_config=weight_comp_config,
-        compress_cache=flex_args.compress_cache, comp_cache_config=cache_comp_config,
-    )
-    
-    opt_lm = OptLM(flex_args.model, env, flex_args.path, policy)
+    opt_lm = OptLM(args.model, env, cache_path, policy)
     end_time = time.time()
     load_time = end_time - start_time
-    print(f"FlexLLMGen model initialized in {load_time:.4f}s.")
+    print(f"{framework_name} model initialized in {load_time:.4f}s.")
     print_flexllmgen_distribution(opt_lm, log_file)
     return opt_lm, env, load_time
 
@@ -148,17 +150,17 @@ def run_accelerate_benchmark(args, runner, prompt_text):
 
     total_time = end_time - start_time
     total_tokens = args.input_nums * args.gen_len
-    throughput = total_tokens / total_time
-    latency = total_time / args.input_nums
+    throughput = total_tokens / total_time if total_time > 0 else 0
+    latency = total_time / args.input_nums if args.input_nums > 0 else 0
 
     print(f"Total Time: {total_time:.4f}s, Throughput: {throughput:.2f} tokens/sec, Latency: {latency:.4f} sec/sample")
     return {
         "framework": "Accelerate", "throughput": throughput, "latency": latency,
     }
 
-def run_flexllmgen_benchmark(args, opt_lm, prompt_text):
+def run_flexllmgen_benchmark(args, opt_lm, prompt_text, framework_name):
     """Runs the benchmark for an already initialized FlexLLMGen model."""
-    print("--- Benchmarking FlexLLMGen ---")
+    print(f"--- Benchmarking {framework_name} ---")
     tokenizer = AutoTokenizer.from_pretrained("facebook/opt-30b", padding_side="left")
     tokenized_prompts = tokenizer([prompt_text], padding="max_length", max_length=args.input_len, return_tensors="np").input_ids
     input_ids_batch = np.tile(tokenized_prompts, (args.input_nums, 1))
@@ -169,13 +171,38 @@ def run_flexllmgen_benchmark(args, opt_lm, prompt_text):
 
     total_time = end_time - start_time
     total_tokens = args.input_nums * args.gen_len
-    throughput = total_tokens / total_time
-    latency = total_time / args.input_nums
+    throughput = total_tokens / total_time if total_time > 0 else 0
+    latency = total_time / args.input_nums if args.input_nums > 0 else 0
 
     print(f"Total Time: {total_time:.4f}s, Throughput: {throughput:.2f} tokens/sec, Latency: {latency:.4f} sec/sample")
     return {
-        "framework": "FlexLLMGen", "throughput": throughput, "latency": latency,
+        "framework": framework_name, "throughput": throughput, "latency": latency,
     }
+
+def run_autoflex_benchmark(args, log_file, prompt_text):
+    """Finds the optimal policy and runs a benchmark for AutoFlex."""
+    print("\n--- Finding Optimal Policy for AutoFlex ---")
+    hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
+    cost_model = CostModel(hardware_profile)
+    total_batch_size = args.input_nums
+    model_info = get_model_info(args.model, total_batch_size, args.input_len + args.gen_len)
+    
+    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len)
+    
+    if not best_policy:
+        print("Could not find an optimal policy for AutoFlex. Skipping benchmark.", file=sys.stderr)
+        return None, 0, None
+
+    print("\nOptimal Policy Found:")
+    print(f"  - Weight Placement (GPU/CPU/Disk %): {best_policy.w_gpu_percent} / {best_policy.w_cpu_percent} / {best_policy.w_disk_percent}")
+    print(f"  - Cache Placement (GPU/CPU/Disk %): {best_policy.cache_gpu_percent} / {best_policy.cache_cpu_percent} / {best_policy.cache_disk_percent}")
+
+    opt_lm, env, load_time = initialize_flexllmgen_with_policy(args, log_file, best_policy, "AutoFlex")
+    
+    results = run_flexllmgen_benchmark(args, opt_lm, prompt_text, framework_name="AutoFlex")
+    
+    return results, load_time, env
+
 
 def parse_benchmark_output(output):
     patterns = {
@@ -325,14 +352,14 @@ def run_flexgen_mode(args):
     """Runs FlexLLMGen with a fixed 'all-on-GPU' policy."""
     log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
     try:
-        flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
+        flexllmgen_model, flexllmgen_env, _ = initialize_flexllmgen(args, log_file=log_file_handle)
         
         natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
         prompt_words = natural_prompt_base.split()
         multiplier = (args.input_len // len(prompt_words)) + 1
         prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
 
-        run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text)
+        run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexLLMGen (All-GPU)")
 
         print("Cleaning up FlexLLMGen resources...")
         flexllmgen_env.close_copy_threads()
@@ -394,48 +421,69 @@ def run_accelerate_mode(args):
     logger.info(f"--- Execution Finished Successfully ({current_mode}) ---")
 
 def run_benchmark_mode(args):
-    """Runs the benchmark mode to compare Accelerate and FlexLLMGen."""
+    """Runs the benchmark mode to compare Accelerate, FlexLLMGen, and AutoFlex."""
     log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
+    autoflex_env = None  # Initialize to ensure it's defined in the finally block
 
     try:
-        # --- 1. Initialization Phase ---
-        print("Initializing models... This may take a moment.")
-        accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
-        flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
-        print("All models initialized. Starting benchmarks.")
-
-        # --- 2. Benchmarking Phase ---
+        # --- 1. Initialization and Benchmarking Phase ---
+        print("Initializing models and running benchmarks... This may take a moment.")
+        
         natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
         prompt_words = natural_prompt_base.split()
         multiplier = (args.input_len // len(prompt_words)) + 1
         prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
 
         results = []
-        results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
-        results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text))
+        load_times = {}
 
-        # --- 3. Print Summary ---
-        print("--- Benchmark Summary ---")
+        # Accelerate
+        accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
+        results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
+        load_times["Accelerate"] = accelerate_load_time
+        del accelerate_model # Free up memory
+        torch.cuda.empty_cache()
+
+
+        # FlexLLMGen (All-GPU)
+        flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
+        results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
+        load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
+        
+        print("Cleaning up FlexLLMGen (All-GPU) resources...")
+        flexllmgen_env.close_copy_threads()
+        del flexllmgen_model
+        torch.cuda.empty_cache()
+
+
+        # AutoFlex
+        autoflex_results, autoflex_load_time, autoflex_env = run_autoflex_benchmark(args, log_file_handle, prompt_text)
+        if autoflex_results:
+            results.append(autoflex_results)
+            load_times["AutoFlex"] = autoflex_load_time
+
+        # --- 2. Print Summary ---
+        print("\n--- Benchmark Summary ---")
         print(f"Model: {args.model}, Input Nums: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
-        print(f"Accelerate Model Load Time: {accelerate_load_time:.4f}s")
-        print(f"FlexLLMGen Model Load Time: {flexllmgen_load_time:.4f}s")
-        print("| Framework    | Throughput (tokens/s) | Latency (s/sample) | Model Load Time (s) |")
-        print("|--------------|-----------------------|--------------------|---------------------|")
+        print("| Framework         | Throughput (tokens/s) | Latency (s/sample) | Model Load Time (s) |")
+        print("|-------------------|-----------------------|--------------------|---------------------|")
         for res in results:
+            framework = res['framework']
             throughput_str = f"{res['throughput']:.2f}"
             latency_str = f"{res['latency']:.4f}"
-            load_time_str = f"{accelerate_load_time if res['framework'] == 'Accelerate' else flexllmgen_load_time:.4f}"
-            print(f"| {res['framework']:<12} | {throughput_str:<21} | {latency_str:<18} | {load_time_str:<19} |")
-        print("--------------------------------------------------------------------------------")
-
-        # --- 4. Cleanup Phase ---
-        print("Cleaning up FlexLLMGen resources...")
-        flexllmgen_env.close_copy_threads()
-        print("Cleanup complete. Exiting.")
+            load_time_str = f"{load_times.get(framework, 0):.4f}"
+            print(f"| {framework:<17} | {throughput_str:<21} | {latency_str:<18} | {load_time_str:<19} |")
+        print("-------------------------------------------------------------------------------------")
 
     finally:
+        # --- 3. Cleanup Phase ---
+        if autoflex_env:
+            print("Cleaning up AutoFlex resources...")
+            autoflex_env.close_copy_threads()
         if args.log_file and log_file_handle is not sys.stdout:
             log_file_handle.close()
+        print("Benchmark finished.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run accelerate or benchmark for LLMs.")
@@ -451,8 +499,8 @@ if __name__ == "__main__":
     parser.add_argument("--log-file", type=str, default=None, help="Path to a file to save the weight distribution logs for benchmark mode.")
 
     # --- AutoFlex Mode Specific Arguments ---
-    parser.add_argument("--path", type=str, default="~/FlexLLMGen/model_weights", help="Path to model weights for autoflex mode.")
-    parser.add_argument("--offload-dir", type=str, default="~/FlexLLMGen/offload_dir", help="Offloading directory for autoflex mode.")
+    parser.add_argument("--path", type=str, default="~/flexllmgen_cache", help="Path to model weights for autoflex mode.")
+    parser.add_argument("--offload-dir", type=str, default="~/flexllmgen_offload", help="Offloading directory for autoflex mode.")
     parser.add_argument("--force-rerun-profiler", action="store_true", help="Force re-running the hardware profiler for autoflex mode.")
 
     args = parser.parse_args()
