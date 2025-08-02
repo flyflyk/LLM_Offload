@@ -1,25 +1,18 @@
-# C:/Users/flyfl/Documents/CodeProjects/py/inference/test.py
-"""
-Main entry point for running FlexLLMGen with an automated offloading policy.
-
-This script acts as a high-level orchestrator that:
-1. Profiles the hardware to understand system capabilities.
-2. Uses a cost model to find the optimal offloading policy.
-3. Generates and executes the appropriate `flex_opt.py` command.
-"""
-
 import argparse
 import os
 import subprocess
 import sys
 
-# --- Local Imports ---
+# Add the FlexLLMGen submodule to the Python path
+flexllmgen_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "FlexLLMGen"))
+if flexllmgen_path not in sys.path:
+    sys.path.insert(0, flexllmgen_path)
+
 from AutoPolicy.profiler import get_hardware_profile
 from AutoPolicy.cost_model import CostModel, get_model_info
 from AutoPolicy.optimizer import find_best_policy
 
 def main():
-    """Main execution function."""
     parser = argparse.ArgumentParser(
         description="Automated inference runner for FlexLLMGen.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
