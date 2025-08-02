@@ -35,6 +35,41 @@ pip install -r requirements.txt
 
 ## 使用方法
 
+此專案提供兩種主要的使用方式：
+
+1.  **自動化策略推理 (`test.py`):** (推薦) 此腳本會自動分析您的硬體、尋找最佳的卸載策略，並使用 FlexLLMGen 進行高效推理。
+2.  **手動模式 (`main.py`):** 此腳本提供 `accelerate` 和 `benchmark` 兩種模式，用於手動執行或比較不同框架。
+
+---
+
+### `test.py` - 自動化策略推理 (推薦)
+
+此模式會自動為硬體找到最佳的 GPU/CPU/Disk 資源分配策略，以達到最低的推理延遲。
+
+**執行指令:**
+
+```bash
+python test.py [OPTIONS]
+```
+
+**[OPTIONS]:**
+
+*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-6.7b`)。
+*   `--prompt-len`: 輸入提示的長度 (token 數) (預設: `512`)。
+*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
+*   `--gpu-batch-size`: 單個 GPU 批次的大小 (預設: `4`)。
+*   `--num-gpu-batches`: GPU 批次的數量 (預設: `1`)。
+*   `--force-rerun-profiler`: 強制重新執行硬體分析，即使已有快取檔案。
+
+**範例:**
+
+```bash
+# 使用 opt-2.7b 模型進行自動化推理
+python test.py --model facebook/opt-2.7b --prompt-len 64 --gen-len 32
+```
+
+### `main.py` - 手動模式
+
 `main.py` 是主要執行腳本，提供兩種操作模式： `accelerate` 和 `benchmark`。
 
 ### Accelerate 設定檔 (`Accelerate/config.py`)
