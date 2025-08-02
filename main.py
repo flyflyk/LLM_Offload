@@ -475,6 +475,7 @@ def run_benchmark_mode(args):
             
             # --- Force Memory Cleanup ---
             print("\n--- Forcefully cleaning up VRAM before next test ---")
+            flexllmgen_env.close_copy_threads()
             del flexllmgen_model, flexllmgen_env
             gc.collect()
             torch.cuda.empty_cache()
