@@ -82,8 +82,8 @@ def get_hardware_profile(profile_path: str = "AutoPolicy/hardware_profile.json",
             # Simulate Disk bandwidth as 1/10th of CPU-CPU transfer for demonstration.
             "disk_cpu_bandwidth": _profile_bandwidth_mb_s('cpu', 'cpu', 256) / 1024 * 0.1,
             # Compute in TFLOPS (FP16)
-            "gpu_tflops": _profile_compute_tflops('cuda:0'),
-            "cpu_tflops": _profile_compute_tflops('cpu'),
+            "gpu_tflops": _profile_compute_tflops('cuda:0', model_dim=4096),
+            "cpu_tflops": _profile_compute_tflops('cpu', model_dim=1024),
         }
     except (RuntimeError, FileNotFoundError) as e:
         # Fallback to placeholder values if profiling fails (e.g., no GPU).
