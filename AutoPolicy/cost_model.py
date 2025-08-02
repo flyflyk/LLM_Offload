@@ -21,7 +21,7 @@ def get_model_info(model_name: str, batch_size: int, max_seq_len: int) -> ModelI
     # Note: These are simplified calculations for the cost model.
     weight_size_gb = config.model_bytes() / 1e9
     # KV cache size per token = num_layers * 2 (k/v) * batch_size * hidden_dim * bytes_per_element
-    kv_cache_per_token_gb = (config.n_layers * 2 * batch_size * config.input_dim * 2) / 1e9
+    kv_cache_per_token_gb = (config.num_hidden_layers * 2 * batch_size * config.input_dim * 2) / 1e9
     
     return ModelInfo(
         name=model_name,
