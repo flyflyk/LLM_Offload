@@ -204,10 +204,10 @@ def run_autoflex_benchmark(args, log_file, prompt_text):
     print("\n--- Finding Optimal Policy for AutoFlex ---")
     hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
     cost_model = CostModel(hardware_profile)
-    total_batch_size = args.input_nums
-    model_info = get_model_info(args.model, total_batch_size, args.input_len + args.gen_len)
+    batch_size = args.input_nums
+    model_info = get_model_info(args.model, batch_size, args.input_len + args.gen_len)
     
-    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len)
+    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, batch_size)
     
     if not best_policy:
         print("Could not find an optimal policy for AutoFlex. Skipping benchmark.", file=sys.stderr)
@@ -288,14 +288,14 @@ def run_autoflex_mode(args):
 
     # --- 2. Cost and Model Analysis ---
     cost_model = CostModel(hardware_profile)
-    total_batch_size = args.input_nums
-    model_info = get_model_info(args.model, total_batch_size, args.input_len + args.gen_len)
+    batch_size = args.input_nums
+    model_info = get_model_info(args.model, batch_size, args.input_len + args.gen_len)
     print(f"\nModel Info ({args.model}):")
     print(f"  - Weight Size: {model_info.weight_size_gb:.2f} GB")
     print(f"  - KV Cache per token: {model_info.kv_cache_per_token_gb * 1e6:.2f} KB")
 
     # --- 3. Find Optimal Policy ---
-    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len)
+    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, batch_size)
     
     if not best_policy:
         print("Could not find an optimal policy. Exiting.", file=sys.stderr)

@@ -4,7 +4,7 @@ from tqdm import tqdm
 from FlexLLMGen.flexllmgen.flex_opt import Policy, CompressionConfig
 from AutoPolicy.cost_model import CostModel, ModelInfo
 
-def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: int, gen_len: int) -> Policy:
+def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: int, gen_len: int, batch_size: int) -> Policy:
     """
     Finds the best offloading policy using a grid search over placement percentages.
     """
@@ -30,7 +30,7 @@ def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: i
             act_gpu, act_cpu = 100, 0
             
             policy = Policy(
-                gpu_batch_size=1, num_gpu_batches=1, # Placeholder values
+                gpu_batch_size=batch_size, num_gpu_batches=1,
                 w_gpu_percent=w_gpu, w_cpu_percent=w_cpu,
                 cache_gpu_percent=c_gpu, cache_cpu_percent=c_cpu,
                 act_gpu_percent=act_gpu, act_cpu_percent=act_cpu,
