@@ -463,10 +463,29 @@ def run_benchmark_mode(args):
         results = []
         load_times = {}
 
-        # Accelerate
+        # --- Test Order: FlexGen (most VRAM sensitive) -> Accelerate -> AutoFlex (most robust) ---
+
+        # 1. FlexLLMGen (All-GPU) - with pre-check
+        if check_vram_availability(args):
+            flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
+            results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
+            load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
+            
+            # --- Force Memory Cleanup ---
+            print("\n--- Forcefully cleaning up VRAM before next test ---")
+            del flexllmgen_model, flexllmgen_env
+            gc.collect()
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            time.sleep(1)
+        else:
+            print("\nSkipping FlexGen (All-GPU) benchmark due to insufficient VRAM.")
+
+        # 2. Accelerate
         accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
         results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
         load_times["Accelerate"] = accelerate_load_time
+        
         # --- Force Memory Cleanup ---
         print("\n--- Forcefully cleaning up VRAM before next test ---")
         del accelerate_model
@@ -475,20 +494,7 @@ def run_benchmark_mode(args):
         torch.cuda.synchronize()
         time.sleep(1)
 
-        # FlexLLMGen (All-GPU) - with pre-check
-        if check_vram_availability(args):
-            flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
-            results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
-            load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
-            
-            print("Cleaning up FlexLLMGen (All-GPU) resources...")
-            flexllmgen_env.close_copy_threads()
-            del flexllmgen_model
-            torch.cuda.empty_cache()
-        else:
-            print("\nSkipping FlexGen (All-GPU) benchmark due to insufficient VRAM.")
-
-        # AutoFlex
+        # 3. AutoFlex
         autoflex_results, autoflex_load_time, autoflex_env = run_autoflex_benchmark(args, log_file_handle, prompt_text)
         if autoflex_results:
             results.append(autoflex_results)
