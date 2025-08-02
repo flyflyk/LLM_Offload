@@ -31,6 +31,32 @@ from AutoPolicy.optimizer import find_best_policy
 
 # --- Helper Functions ---
 
+def check_vram_availability(args):
+    """Checks if the model weights can fit into the available VRAM."""
+    if not torch.cuda.is_available():
+        print("CUDA is not available. Cannot perform VRAM check.")
+        return False # Assume it won't fit if no CUDA
+
+    print("--- Performing VRAM Pre-check for All-GPU Policy ---")
+    # Get model info without loading the whole model
+    model_info = get_model_info(args.model, 1, 1) # Dummy values for batch size and seq len
+    model_size_gb = model_info.weight_size_gb
+
+    # Get available VRAM
+    free_vram_bytes, _ = torch.cuda.mem_get_info(0)
+    free_vram_gb = free_vram_bytes / (1024**3)
+
+    print(f"Estimated Model Size: {model_size_gb:.2f} GB")
+    print(f"Available VRAM: {free_vram_gb:.2f} GB")
+
+    # Check if model fits, with a small buffer (e.g., 5%)
+    if model_size_gb > free_vram_gb * 0.95:
+        print("Model is too large to fit entirely in VRAM.")
+        return False
+    
+    print("Model should fit in VRAM.")
+    return True
+
 def print_flexllmgen_distribution(opt_lm, log_file):
     """Prints the detailed layer-by-layer weight distribution for a FlexLLMGen model to a file."""
     print("--- FlexLLMGen Model Weight Distribution ---", file=log_file)
@@ -95,12 +121,6 @@ def initialize_accelerate(args, log_file):
 def initialize_flexllmgen(args, log_file):
     """Loads the FlexLLMGen model and returns the model and environment objects."""
     print("--- Initializing FlexLLMGen Model (All-GPU Policy) ---")
-    start_time = time.time()
-    cache_path = os.path.abspath("./flexllmgen_cache")
-    offload_dir = os.path.abspath("./flexllmgen_offload")
-    os.makedirs(cache_path, exist_ok=True)
-    os.makedirs(offload_dir, exist_ok=True)
-
     # Default "all-on-GPU" policy
     policy = Policy(
         gpu_batch_size=args.input_nums, num_gpu_batches=1,
@@ -350,6 +370,11 @@ def run_autoflex_mode(args):
 
 def run_flexgen_mode(args):
     """Runs FlexLLMGen with a fixed 'all-on-GPU' policy."""
+    if not check_vram_availability(args):
+        print("\n[ERROR] Not enough VRAM to run FlexGen with an all-on-GPU policy.", file=sys.stderr)
+        print("Please try a smaller model or use '--mode autoflex' to enable automatic offloading.", file=sys.stderr)
+        return
+
     log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
     try:
         flexllmgen_model, flexllmgen_env, _ = initialize_flexllmgen(args, log_file=log_file_handle)
@@ -444,17 +469,18 @@ def run_benchmark_mode(args):
         del accelerate_model # Free up memory
         torch.cuda.empty_cache()
 
-
-        # FlexLLMGen (All-GPU)
-        flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
-        results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
-        load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
-        
-        print("Cleaning up FlexLLMGen (All-GPU) resources...")
-        flexllmgen_env.close_copy_threads()
-        del flexllmgen_model
-        torch.cuda.empty_cache()
-
+        # FlexLLMGen (All-GPU) - with pre-check
+        if check_vram_availability(args):
+            flexllmgen_model, flexllmgen_env, flexllmgen_load_time = initialize_flexllmgen(args, log_file=log_file_handle)
+            results.append(run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexGen (All-GPU)"))
+            load_times["FlexGen (All-GPU)"] = flexllmgen_load_time
+            
+            print("Cleaning up FlexLLMGen (All-GPU) resources...")
+            flexllmgen_env.close_copy_threads()
+            del flexllmgen_model
+            torch.cuda.empty_cache()
+        else:
+            print("\nSkipping FlexGen (All-GPU) benchmark due to insufficient VRAM.")
 
         # AutoFlex
         autoflex_results, autoflex_load_time, autoflex_env = run_autoflex_benchmark(args, log_file_handle, prompt_text)
