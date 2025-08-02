@@ -50,7 +50,7 @@ class CostModel:
         """
         Predicts the total inference latency for a given policy and task.
         """
-        num_layers = model_info.config.n_layers
+        num_layers = model_info.config.num_hidden_layers
         
         # --- 1. Prefill Phase Latency ---
         w_size = model_info.weight_size_gb
