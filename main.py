@@ -1,4 +1,5 @@
 import argparse
+import gc
 import time
 import torch
 import os
@@ -466,8 +467,13 @@ def run_benchmark_mode(args):
         accelerate_model, accelerate_load_time = initialize_accelerate(args, log_file=log_file_handle)
         results.append(run_accelerate_benchmark(args, accelerate_model, prompt_text))
         load_times["Accelerate"] = accelerate_load_time
-        del accelerate_model # Free up memory
+        # --- Force Memory Cleanup ---
+        print("\n--- Forcefully cleaning up VRAM before next test ---")
+        del accelerate_model
+        gc.collect()
         torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        time.sleep(1)
 
         # FlexLLMGen (All-GPU) - with pre-check
         if check_vram_availability(args):
