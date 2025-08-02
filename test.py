@@ -19,7 +19,7 @@ def parse_benchmark_output(output):
         "Model Size (GB)": r"model size: (\d+\.\d+)",
         "Cache Size (GB)": r"cache size: (\d+\.\d+)",
         "Hidden Size (GB)": r"hidden size \(prefill\): (\d+\.\d+)",
-        "GPU Peak Mem (GB)": r"gpu peak mem: (\d+\.\d+)",
+        "GPU Peak Mem (GB)": r"peak memory: (\d+\.\d+)GB",
         "Projected": r"projected: (\w+)",
         "Prefill Latency (s)": r"prefill latency: (\d+\.\d+)",
         "Prefill Throughput (token/s)": r"prefill throughput: (\d+\.\d+)",
