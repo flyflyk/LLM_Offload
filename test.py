@@ -2,6 +2,8 @@ import argparse
 import os
 import subprocess
 import sys
+import re
+from datetime import datetime
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "FlexLLMGen"))
@@ -11,6 +13,61 @@ if flexllmgen_path not in sys.path:
 from AutoPolicy.profiler import get_hardware_profile
 from AutoPolicy.cost_model import CostModel, get_model_info
 from AutoPolicy.optimizer import find_best_policy
+
+def parse_benchmark_output(output):
+    patterns = {
+        "Model Size (GB)": r"model size: (\d+\.\d+)",
+        "Cache Size (GB)": r"cache size: (\d+\.\d+)",
+        "Hidden Size (GB)": r"hidden size \(prefill\): (\d+\.\d+)",
+        "GPU Peak Mem (GB)": r"gpu peak mem: (\d+\.\d+)",
+        "Projected": r"projected: (\w+)",
+        "Prefill Latency (s)": r"prefill latency: (\d+\.\d+)",
+        "Prefill Throughput (token/s)": r"prefill throughput: (\d+\.\d+)",
+        "Decode Latency (s)": r"decode latency: (\d+\.\d+)",
+        "Decode Throughput (token/s)": r"decode throughput: (\d+\.\d+)",
+        "Total Latency (s)": r"total latency: (\d+\.\d+)",
+        "Total Throughput (token/s)": r"total throughput: (\d+\.\d+)",
+    }
+    
+    results = {}
+    for key, pattern in patterns.items():
+        match = re.search(pattern, output)
+        if match:
+            results[key] = match.group(1)
+        else:
+            results[key] = "N/A"
+            
+    return results
+
+def format_benchmark_table(results):
+    # Get current timestamp
+    now = datetime.now()
+    timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Header
+    header = f"""
+## Timestamp: {timestamp}
+| Category                  | Metrics                     | Value      |
+|---------------------------|-----------------------------|------------|
+"""
+    # Body
+    body = f"""| **Environment**           |                           |            |
+| Model                     | Model Size (GB)             | {results.get("Model Size (GB)", "N/A")}      |
+|                           | Cache Size (GB)             | {results.get("Cache Size (GB)", "N/A")}      |
+|                           | Hidden Size (GB)            | {results.get("Hidden Size (GB)", "N/A")}      |
+| **Memory**                |                           |            |
+| GPU                       | Peak Memory (GB)            | {results.get("GPU Peak Mem (GB)", "N/A")}      |
+| **Performance**           |                           |            |
+| Latency                   | Prefill (s)                 | {results.get("Prefill Latency (s)", "N/A")}      |
+|                           | Decode (s)                  | {results.get("Decode Latency (s)", "N/A")}      |
+|                           | Total (s)                   | {results.get("Total Latency (s)", "N/A")}      |
+| Throughput                | Prefill (token/s)           | {results.get("Prefill Throughput (token/s)", "N/A")} |
+|                           | Decode (token/s)            | {results.get("Decode Throughput (token/s)", "N/A")} |
+|                           | Total (token/s)             | {results.get("Total Throughput (token/s)", "N/A")} |
+"""
+    
+    return header + body
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -84,13 +141,28 @@ def main():
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
                                    text=True, bufsize=1, universal_newlines=True,
                                    env=env)
+        
+        output_lines = []
         for line in iter(process.stdout.readline, ''):
             print(line, end='')
+            output_lines.append(line)
+        
         process.stdout.close()
         return_code = process.wait()
+        
         if return_code:
             raise subprocess.CalledProcessError(return_code, command)
-            
+
+        # Parse and format the output
+        full_output = "".join(output_lines)
+        benchmark_results = parse_benchmark_output(full_output)
+        formatted_table = format_benchmark_table(benchmark_results)
+        
+        print("\n" + "="*50)
+        print("Benchmark Results:")
+        print(formatted_table)
+        print("="*50)
+
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"\nError executing FlexLLMGen: {e}", file=sys.stderr)
         sys.exit(1)
