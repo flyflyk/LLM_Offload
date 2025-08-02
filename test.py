@@ -74,9 +74,16 @@ def main():
     print("Starting FlexLLMGen Inference...")
     print("="*50 + "\n")
 
+    # Create a modified environment for the subprocess to find the flexllmgen module.
+    env = os.environ.copy()
+    flexllmgen_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "FlexLLMGen"))
+    env["PYTHONPATH"] = flexllmgen_path + os.pathsep + env.get("PYTHONPATH", "")
+
     try:
-        # Use Popen for real-time output streaming.
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+        # Use Popen for real-time output streaming and pass the modified environment.
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                                   text=True, bufsize=1, universal_newlines=True,
+                                   env=env)
         for line in iter(process.stdout.readline, ''):
             print(line, end='')
         process.stdout.close()
