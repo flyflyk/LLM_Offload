@@ -30,6 +30,7 @@ conda activate llm_inference_env
 
 # 安裝依賴套件
 pip install -r requirements.txt
+pip install -e FlexLLMGen
 ```
 
 ## 使用方法
