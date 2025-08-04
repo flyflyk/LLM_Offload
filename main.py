@@ -283,52 +283,12 @@ def format_benchmark_table(results):
 
 # --- Main Execution Modes ---
 
-def run_autoflex_mode(args):
-    """Runs the auto-policy FlexLLMGen mode."""
-    # --- 1. Hardware Profiling ---
-    hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
-    print("\nUsing Hardware Profile:", hardware_profile)
-
-    # --- 2. Cost and Model Analysis ---
-    cost_model = CostModel(hardware_profile)
-    batch_size = args.input_nums
-    model_info = get_model_info(args.model, batch_size, args.input_len + args.gen_len)
-    print(f"\nModel Info ({args.model}):")
-    print(f"  - Weight Size: {model_info.weight_size_gb:.2f} GB")
-    print(f"  - KV Cache per token: {model_info.kv_cache_per_token_gb * 1e6:.2f} KB")
-
-    # --- 3. Find Optimal Policy ---
-    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, batch_size)
-    
-    if not best_policy:
-        print("Could not find an optimal policy. Exiting.", file=sys.stderr)
-        sys.exit(1)
-
-    print("\nOptimal Policy Found:")
-    print(f"  - Weight Placement (GPU/CPU/Disk %): {best_policy.w_gpu_percent} / {best_policy.w_cpu_percent} / {best_policy.w_disk_percent}")
-    print(f"  - Cache Placement (GPU/CPU/Disk %): {best_policy.cache_gpu_percent} / {best_policy.cache_cpu_percent} / {best_policy.cache_disk_percent}")
-
-    # --- 4. Execute FlexLLMGen with Optimal Policy ---
-    command = [
-        sys.executable,
-        "-m", "FlexLLMGen.flexllmgen.flex_opt",
-        "--model", args.model,
-        "--path", os.path.expanduser(args.path),
-        "--offload-dir", os.path.expanduser(args.offload_dir),
-        "--prompt-len", str(args.input_len),
-        "--gen-len", str(args.gen_len),
-        "--gpu-batch-size", str(args.input_nums),
-        "--num-gpu-batches", "1",
-        "--percent",
-        str(best_policy.w_gpu_percent), str(best_policy.w_cpu_percent),
-        str(best_policy.cache_gpu_percent), str(best_policy.cache_cpu_percent),
-        str(best_policy.act_gpu_percent), str(best_policy.act_cpu_percent),
-    ]
-
-    print("\nExecuting command:")
+def _execute_flexgen_subprocess(command, title):
+    """A helper function to execute a FlexLLMGen subprocess, stream its output, and handle errors."""
+    print(f"\nExecuting command for {title}:")
     print("  " + " ".join(command))
     print("\n" + "="*50)
-    print("Starting FlexLLMGen Inference...")
+    print(f"Starting {title} Inference...")
     print("="*50 + "\n")
 
     # Create a modified environment for the subprocess to find the flexllmgen module.
@@ -337,8 +297,8 @@ def run_autoflex_mode(args):
     env["PYTHONPATH"] = flexllmgen_path + os.pathsep + env.get("PYTHONPATH", "")
 
     try:
-        # Use Popen for real-time output streaming and pass the modified environment.
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+        # Use Popen for real-time output streaming
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, bufsize=1, universal_newlines=True,
                                    env=env)
         
@@ -353,48 +313,81 @@ def run_autoflex_mode(args):
         if return_code:
             raise subprocess.CalledProcessError(return_code, command)
 
-        # Parse and format the output
-        full_output = "".join(output_lines)
-        benchmark_results = parse_benchmark_output(full_output)
-        formatted_table = format_benchmark_table(benchmark_results)
-        
-        print("\n" + "="*50)
-        print("Benchmark Results:")
-        print(formatted_table)
-        print("="*50)
+        # In autoflex mode, parse and format the output
+        if "AutoFlex" in title:
+            full_output = "".join(output_lines)
+            benchmark_results = parse_benchmark_output(full_output)
+            formatted_table = format_benchmark_table(benchmark_results)
+            
+            print("\n" + "="*50)
+            print("Benchmark Results:")
+            print(formatted_table)
+            print("="*50)
 
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"\nError executing FlexLLMGen: {e}", file=sys.stderr)
         sys.exit(1)
 
     print("\n" + "="*50)
-    print("Inference finished successfully.")
+    print(f"{title} inference finished successfully.")
     print("="*50)
 
+def run_autoflex_mode(args):
+    """Runs the auto-policy FlexLLMGen mode."""
+    # --- 1. Hardware Profiling, Cost and Model Analysis ---"
+    hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
+    cost_model = CostModel(hardware_profile)
+    model_info = get_model_info(args.model, args.input_nums, args.input_len + args.gen_len)
+    
+    # --- 2. Find Optimal Policy ---
+    best_policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, args.input_nums)
+    if not best_policy:
+        print("Could not find an optimal policy. Exiting.", file=sys.stderr)
+        sys.exit(1)
+
+    print("\nOptimal Policy Found:")
+    print(f"  - Weight Placement (GPU/CPU/Disk %): {best_policy.w_gpu_percent} / {best_policy.w_cpu_percent} / {best_policy.w_disk_percent}")
+    print(f"  - Cache Placement (GPU/CPU/Disk %): {best_policy.cache_gpu_percent} / {best_policy.cache_cpu_percent} / {best_policy.cache_disk_percent}")
+
+    # --- 3. Execute FlexLLMGen with Optimal Policy ---
+    command = [
+        sys.executable, "-m", "FlexLLMGen.flexllmgen.flex_opt",
+        "--model", args.model,
+        "--path", os.path.expanduser(args.path),
+        "--offload-dir", os.path.expanduser(args.offload_dir),
+        "--prompt-len", str(args.input_len),
+        "--gen-len", str(args.gen_len),
+        "--gpu-batch-size", str(args.input_nums),
+        "--num-gpu-batches", "1",
+        "--percent",
+        str(best_policy.w_gpu_percent), str(best_policy.w_cpu_percent),
+        str(best_policy.cache_gpu_percent), str(best_policy.cache_cpu_percent),
+        str(best_policy.act_gpu_percent), str(best_policy.act_cpu_percent),
+    ]
+    _execute_flexgen_subprocess(command, "AutoFlex")
+
 def run_flexgen_mode(args):
-    """Runs FlexLLMGen with a fixed 'all-on-GPU' policy."""
+    """
+    Runs FlexLLMGen with a fixed 'all-on-GPU' policy.
+    """
     if not check_vram(args):
         print("\n[ERROR] Not enough VRAM to run FlexGen with an all-on-GPU policy.", file=sys.stderr)
         print("Please try a smaller model or use '--mode autoflex' to enable automatic offloading.", file=sys.stderr)
         return
 
-    log_file_handle = open(args.log_file, 'w') if args.log_file else sys.stdout
-    try:
-        flexllmgen_model, flexllmgen_env, _ = init_flexgen(args, log_file=log_file_handle)
-        
-        natural_prompt_base = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse. For thirty years, its beam had sliced through the darkest nights, a beacon of hope to the people of the island. "
-        prompt_words = natural_prompt_base.split()
-        multiplier = (args.input_len // len(prompt_words)) + 1
-        prompt_text = " ".join((prompt_words * multiplier)[:args.input_len])
-
-        run_flexllmgen_benchmark(args, flexllmgen_model, prompt_text, framework_name="FlexLLMGen (All-GPU)")
-
-        print("Cleaning up FlexLLMGen resources...")
-        flexllmgen_env.close_copy_threads()
-        print("Cleanup complete. Exiting.")
-    finally:
-        if args.log_file and log_file_handle is not sys.stdout:
-            log_file_handle.close()
+    # Command to run FlexLLMGen with a 100% GPU policy
+    command = [
+        sys.executable, "-m", "FlexLLMGen.flexllmgen.flex_opt",
+        "--model", args.model,
+        "--path", os.path.expanduser(args.path),
+        "--offload-dir", os.path.expanduser(args.offload_dir),
+        "--prompt-len", str(args.input_len),
+        "--gen-len", str(args.gen_len),
+        "--gpu-batch-size", str(args.input_nums),
+        "--num-gpu-batches", "1",
+        "--percent", "100", "0", "100", "0", "100", "0",  # All-GPU policy
+    ]
+    _execute_flexgen_subprocess(command, "FlexGen (All-GPU)")
 
 
 def run_accelerate_mode(args):
