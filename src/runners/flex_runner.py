@@ -7,8 +7,8 @@ from typing import List
 from transformers import AutoTokenizer
 
 from flexllmgen.flex_opt import OptLM, Policy
-from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
-from flexllmgen.utils import ExecutionEnv
+from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice, TorchTensor, DeviceType
+from flexllmgen.utils import ExecutionEnv, ValueHolder
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,39 @@ class FlexRunner:
         self.model_load_time = end_time - start_time
 
         logger.info(f"[FlexGen] Model loaded in {self.model_load_time:.4f} seconds.")
+        self.log_model_size()
+
+    def log_model_size(self):
+        device_sizes = {}
+
+        def get_tensor_size(tensor):
+            if tensor is None:
+                return
+
+            if isinstance(tensor, (list, tuple)):
+                for t in tensor:
+                    get_tensor_size(t)
+            elif isinstance(tensor, ValueHolder):
+                get_tensor_size(tensor.val)
+            elif isinstance(tensor, TorchTensor):
+                if tensor.device.device_type == DeviceType.MIXED:
+                    for t in tensor.data[0]:
+                        get_tensor_size(t)
+                else:
+                    device_name = tensor.device.name
+                    if device_name not in device_sizes:
+                        device_sizes[device_name] = 0
+                    device_sizes[device_name] += tensor.bytes
+
+        for layer_weight_holder in self.model.weight_home:
+            get_tensor_size(layer_weight_holder.val)
+
+        # Convert to GB
+        for device, total_size in device_sizes.items():
+            device_sizes[device] = f"{total_size / (1024**3):.4f} GB"
+
+        if device_sizes:
+            logger.info(f"[FlexGen] Model weights size per device (GB): {device_sizes}")
 
     def run(self, prompts: List[str], input_len: int, max_new_tokens: int) -> dict:
         if not prompts or not all(prompts):
