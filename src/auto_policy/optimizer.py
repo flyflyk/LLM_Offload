@@ -2,7 +2,7 @@ import itertools
 from tqdm import tqdm
 
 from FlexLLMGen.flexllmgen.flex_opt import Policy, CompressionConfig
-from auto_policy.cost_model import CostModel, ModelInfo
+from .cost_model import CostModel, ModelInfo
 
 def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: int, gen_len: int, batch_size: int) -> Policy:
     """
