@@ -63,17 +63,17 @@ def run_accelerate_mode(args):
     kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
     current_mode = f"{streaming_mode}{kv_offload_mode}"
     logger.info(f"--- Starting Execution (Accelerate - {current_mode}) ---")
-    logger.info(f"Model: {args.model}, Batch size: {args.input_nums}")
+    logger.info(f"Model: {args.model}, Batch size: {args.batch_size}")
 
     runner = AccelerateRunner(model_name=args.model, config=config)
     prompt_text = generate_prompt(args.input_len)
-    prompts = [prompt_text] * args.input_nums
+    prompts = [prompt_text] * args.batch_size
 
     result = runner.run_accelerate(prompts, max_new_tokens=args.gen_len)
     
-    total_tokens = args.input_nums * args.gen_len
+    total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
-    latency = result["inference_time"] / args.input_nums
+    latency = result["inference_time"] / args.batch_size
 
     logger.info("--- Performance Metrics ---")
     logger.info(f"Model Load Time: {runner.model_load_time:.4f}s")
@@ -99,8 +99,8 @@ def run_flex_mode(args, use_autoflex=False):
         logger.info("Finding optimal policy for AutoFlex...")
         hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
         cost_model = CostModel(hardware_profile)
-        model_info = get_model_info(args.model, args.input_nums, args.input_len + args.gen_len)
-        policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, args.input_nums)
+        model_info = get_model_info(args.model, args.batch_size, args.input_len + args.gen_len)
+        policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, args.batch_size)
         if not policy:
             logger.error("Could not find an optimal policy for AutoFlex. Exiting.")
             return None
@@ -111,7 +111,7 @@ def run_flex_mode(args, use_autoflex=False):
             return None
         logger.info("Using default All-GPU policy.")
         policy = Policy(
-            gpu_batch_size=args.input_nums, num_gpu_batches=1,
+            gpu_batch_size=args.batch_size, num_gpu_batches=1,
             w_gpu_percent=100, w_cpu_percent=0,
             cache_gpu_percent=100, cache_cpu_percent=0,
             act_gpu_percent=100, act_cpu_percent=0,
@@ -129,14 +129,14 @@ def run_flex_mode(args, use_autoflex=False):
     )
     
     prompt_text = generate_prompt(args.input_len)
-    prompts = [prompt_text] * args.input_nums
+    prompts = [prompt_text] * args.batch_size
 
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
     runner.cleanup()
 
-    total_tokens = args.input_nums * args.gen_len
+    total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
-    latency = result["inference_time"] / args.input_nums
+    latency = result["inference_time"] / args.batch_size
 
     logger.info("--- Performance Metrics ---")
     logger.info(f"Model Load Time: {result['load_time']:.4f}s")
@@ -150,7 +150,7 @@ def run_flex_mode(args, use_autoflex=False):
 def run_benchmark_mode(args):
     """Runs a comparative benchmark between Accelerate, FlexGen, and AutoFlex."""
     print("--- Starting Benchmark Mode ---")
-    print(f"Model: {args.model}, Batch Size: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
+    print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     
     results = []
 
@@ -186,7 +186,7 @@ def run_benchmark_mode(args):
 
     # --- Print Summary ---
     print("--- Benchmark Summary ---")
-    print(f"Model: {args.model}, Batch Size: {args.input_nums}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
+    print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     print("| Framework         | Throughput (tokens/s) | Latency (s/sample) | Model Load Time (s) |")
     print("|-------------------|-----------------------|--------------------|---------------------|")
     for res in sorted(results, key=lambda x: x['framework']):
@@ -206,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, default="accelerate", choices=["accelerate", "flexgen", "autoflex", "benchmark"], help="Execution mode.")
     parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
     parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
-    parser.add_argument("--input-nums", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
+    parser.add_argument("--batch-size", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
     parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
     
     # --- FlexGen/AutoFlex Specific Arguments ---

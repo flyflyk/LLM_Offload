@@ -54,7 +54,7 @@ python main.py --mode autoflex [OPTIONS]
 *   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
 *   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
 *   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--input-nums`: 一次處理的提示數量 (批次大小) (預設: `1`)。
+*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 *   `--path`: FlexLLMGen 模型權重的儲存路徑 (預設: `~/flexllmgen_cache`)。
 *   `--offload-dir`: 權重卸載 (offload) 的暫存目錄 (預設: `~/flexllmgen_offload`)。
 *   `--force-rerun-profiler`: 強制重新執行硬體分析，即使已有快取檔案。
@@ -63,7 +63,7 @@ python main.py --mode autoflex [OPTIONS]
 
 ```bash
 # 使用 opt-2.7b 模型，並自動尋找最佳卸載策略進行推理
-python main.py --mode autoflex --model facebook/opt-2.7b --input-len 512 --gen-len 64 --input-nums 4
+python main.py --mode autoflex --model facebook/opt-2.7b --input-len 512 --gen-len 64 --batch-size 4
 ```
 
 ---
@@ -83,7 +83,7 @@ python main.py --mode accelerate [OPTIONS]
 *   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
 *   `--input-len`: 自動生成輸入提示的長度 (token 數) (預設: `8`)。
 *   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--input-nums`: 一次處理的提示數量 (批次大小) (預設: `1`)。
+*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 
 **`Accelerate/config.py` 設定:**
 
@@ -95,7 +95,7 @@ python main.py --mode accelerate [OPTIONS]
 
 ```bash
 # 使用 Accelerate 進行標準推理
-python main.py --mode accelerate --model facebook/opt-1.3b --input-len 128 --gen-len 128 --input-nums 2
+python main.py --mode accelerate --model facebook/opt-1.3b --input-len 128 --gen-len 128 --batch-size 2
 ```
 
 #### 智慧型記憶體管理
@@ -125,7 +125,7 @@ python main.py --mode flexgen [OPTIONS]
 *   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
 *   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
 *   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--input-nums`: 一次處理的提示數量 (批次大小) (預設: `1`)。
+*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 *   `--log-file`: (可選) 將模型權重分佈的日誌儲存到指定檔案。
 
 **範例:**
@@ -154,7 +154,7 @@ python main.py --mode benchmark [OPTIONS]
 **[OPTIONS]:**
 
 *   `--model`: 指定要測試的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--input-nums`: 輸入的數量 (批次大小) (預設: `1`)。
+*   `--batch-size`: 輸入的數量 (批次大小) (預設: `1`)。
 *   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
 *   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
 *   `--log-file`: (可選) 將所有框架的模型權重分佈日誌儲存到指定檔案。
@@ -164,5 +164,5 @@ python main.py --mode benchmark [OPTIONS]
 
 ```bash
 # 比較三種策略在 opt-1.3b 模型上的表現
-python main.py --mode benchmark --model facebook/opt-1.3b --input-nums 4 --input-len 64 --gen-len 64 --log-file log.log
+python main.py --mode benchmark --model facebook/opt-1.3b --batch-size 4 --input-len 64 --gen-len 64 --log-file log.log
 ```
