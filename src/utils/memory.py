@@ -18,7 +18,7 @@ def oom_check(model_name: str, device_map: dict, batch_size: int, max_seq_len: i
     for layer_name, device in device_map.items():
         module = meta_model.get_submodule(layer_name)
         module_size = sum(p.numel() * p.element_size() for p in module.parameters())
-        if "cuda" in str(device):
+        if isinstance(device, int) or 'cuda' in str(device):
             vram_weights += module_size
         else:
             other_layers_sizes.append(module_size)
