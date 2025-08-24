@@ -73,15 +73,13 @@ def run_accelerate_mode(args):
     
     total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
-    latency = result["inference_time"] / args.batch_size
 
     logger.info("--- Performance Metrics ---")
     logger.info(f"Model Load Time: {runner.model_load_time:.4f}s")
     logger.info(f"Total Inference Time: {result['inference_time']:.4f}s")
     logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-    logger.info(f"Latency: {latency:.4f} sec/batch")
     logger.info(f"--- Execution Finished Successfully (Accelerate) ---")
-    return {"framework": "Accelerate", "throughput": throughput, "latency": latency, "load_time": runner.model_load_time}
+    return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
 def run_flex_mode(args, use_autoflex=False):
     """
@@ -136,15 +134,13 @@ def run_flex_mode(args, use_autoflex=False):
 
     total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
-    latency = result["inference_time"] / args.batch_size
 
     logger.info("--- Performance Metrics ---")
     logger.info(f"Model Load Time: {result['load_time']:.4f}s")
     logger.info(f"Total Inference Time: {result['inference_time']:.4f}s")
     logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-    logger.info(f"Latency: {latency:.4f} sec/batch")
     logger.info(f"--- Execution Finished Successfully ({framework_name}) ---")
-    return {"framework": framework_name, "throughput": throughput, "latency": latency, "load_time": result['load_time']}
+    return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 
 
 def run_benchmark_mode(args):
@@ -187,15 +183,14 @@ def run_benchmark_mode(args):
     # --- Print Summary ---
     print("--- Benchmark Summary ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
-    print("| Framework         | Throughput (tokens/s) | Latency (s/sample) | Model Load Time (s) |")
-    print("|-------------------|-----------------------|--------------------|---------------------|")
+    print("| Framework         | Throughput (tokens/s) | Model Load Time (s) |")
+    print("|-------------------|-----------------------|---------------------|")
     for res in sorted(results, key=lambda x: x['framework']):
         framework = res['framework']
         throughput_str = f"{res['throughput']:.2f}"
-        latency_str = f"{res['latency']:.4f}"
         load_time_str = f"{res['load_time']:.4f}"
-        print(f"| {framework:<17} | {throughput_str:<21} | {latency_str:<18} | {load_time_str:<19} |")
-    print("-------------------------------------------------------------------------------------")
+        print(f"| {framework:<17} | {throughput_str:<21} | {load_time_str:<19} |")
+    print("-------------------------------------------------------------------")
     print("Benchmark finished.")
 
 
