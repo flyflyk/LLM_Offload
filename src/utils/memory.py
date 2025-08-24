@@ -53,7 +53,7 @@ def oom_check(model_name: str, device_map: dict, batch_size: int, max_seq_len: i
         print(f"\n- VRAM Budget (Available - Static Weights - Safety Margin): {vram_budget / 1e9:.2f} GiB")
         print(f"  - Available VRAM: {available_vram / 1e9:.2f} GiB")
         print(f"  - Static Weights (on VRAM + largest offloaded layer): {static_weights / 1e9:.2f} GiB")
-        print(f"- VRAM Required (Activations + KV Cache): {vram_need / 1e9:.2f} GiB")
+        print(f"- VRAM Dynamic Required (Activations + KV Cache): {vram_need / 1e9:.2f} GiB")
         print(f"  - Peak Activations: {peak_activ / 1e9:.2f} GiB")
         print(f"  - KV Cache: {kv_cache_size / 1e9:.2f} GiB")
         print("\n---")
