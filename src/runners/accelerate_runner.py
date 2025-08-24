@@ -40,7 +40,7 @@ class AccelerateRunner:
                 # Get free VRAM and set a budget (95% of free) to be safe
                 free_vram_bytes, _ = torch.cuda.mem_get_info(0)
                 gpu_mem_gb = int((free_vram_bytes / (1024**3)) * 0.95)
-                max_memory[f"cuda:{torch.cuda.current_device()}"] = f"{gpu_mem_gb}GB"
+                max_memory[torch.cuda.current_device()] = f"{gpu_mem_gb}GB"
                 logger.info(f"Detected {gpu_mem_gb}GB of free VRAM. Setting as GPU memory limit.")
 
             # Handle CPU memory limit based on config
