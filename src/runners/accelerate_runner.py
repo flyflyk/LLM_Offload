@@ -9,38 +9,34 @@ from src.utils.memory import get_model_device_mem, get_max_mem_dict
 logger = logging.getLogger(__name__)
 
 class AccelerateRunner:
-    def __init__(self, model_name: str, config: object, p_type: torch.dtype = torch.float16):
+    def __init__(self, model_name: str, config: object, device_map: dict, p_type: torch.dtype = torch.float16):
         self.model_name = model_name
         self.config = config
         self.p_type = p_type
+        self.device_map = device_map
         self.use_accelerate = getattr(config, 'ENABLE_STREAMING', False)
         self.accelerator = None
         self.streamer = None
         self.model_load_time = 0
 
-        logger.info(f"Loading model '{self.model_name}'...")
+        logger.info(f"Loading model '{self.model_name}' with a predefined device map...")
         start_time = time.time()
         
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        model_kwargs = {"torch_dtype": self.p_type}
+        model_kwargs = {
+            "torch_dtype": self.p_type,
+            "device_map": self.device_map,
+            "offload_folder": getattr(config, 'OFFLOAD_FOLDER', 'offload_dir')
+        }
         
         if self.use_accelerate:
             self.accelerator = Accelerator()
             self.device = self.accelerator.device
-            
-            model_kwargs["device_map"] = "auto"
-            model_kwargs["offload_folder"] = getattr(config, 'OFFLOAD_FOLDER', 'offload_dir')
-            
-            max_memory = get_max_mem_dict()
-
-            if max_memory:
-                model_kwargs["max_memory"] = max_memory
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model_kwargs["device_map"] = "auto"
 
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
 

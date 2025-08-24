@@ -13,7 +13,9 @@ from src.runners.flex_runner import FlexRunner
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
 from src.auto_policy.optimizer import find_best_policy
-from src.utils.memory import oom_check, check_vram
+from src.utils.memory import oom_check, check_vram, get_auto_memory_map
+from accelerate import infer_auto_device_map
+from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
 
 # Add the FlexLLMGen submodule to the Python path
@@ -28,10 +30,21 @@ from flexllmgen.flex_opt import Policy, CompressionConfig
 def run_accelerate_mode(args):
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
+    p_type = torch.float16
+
+    # --- Generate Device Map ---
+    logger.info("Inferring device map for the model...")
+    meta_model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=p_type, device_map="meta")
+    max_memory = get_auto_memory_map()
+    device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
+    logger.info(f"Inferred device map: {device_map}")
+    del meta_model
+    gc.collect()
+    torch.cuda.empty_cache()
 
     # OOM Pre-check
     max_seq_len = args.input_len + args.gen_len
-    if not oom_check(model_name=args.model, batch_size=args.batch_size, max_seq_len=max_seq_len):
+    if not oom_check(model_name=args.model, device_map=device_map, batch_size=args.batch_size, max_seq_len=max_seq_len, dtype=p_type):
         logger.error("Pre-flight check failed. Aborting execution to prevent OOM error.")
         return
 
@@ -41,7 +54,7 @@ def run_accelerate_mode(args):
     logger.info(f"--- Starting Execution (Accelerate - {current_mode}) ---")
     logger.info(f"Model: {args.model}, Batch size: {args.batch_size}")
 
-    runner = AccelerateRunner(model_name=args.model, config=config)
+    runner = AccelerateRunner(model_name=args.model, config=config, device_map=device_map, p_type=p_type)
     prompt_text = generate_prompt(args.input_len)
     prompts = [prompt_text] * args.batch_size
 

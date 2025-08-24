@@ -4,19 +4,14 @@ from transformers import AutoConfig, AutoModelForCausalLM
 from accelerate import infer_auto_device_map
 from src.accelerate import config
 
-def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.dtype = torch.float16):
-    print("INFO - [Pre-check] - Starting OOM risk analysis (device map simulation)...")
+def oom_check(model_name: str, device_map: dict, batch_size: int, max_seq_len: int, dtype: torch.dtype = torch.float16):
+    print("INFO - [Pre-check] - Starting OOM risk analysis...")
     torch.cuda.empty_cache()
     available_vram = torch.cuda.mem_get_info()[0]
-    config = AutoConfig.from_pretrained(model_name)
+    model_config = AutoConfig.from_pretrained(model_name)
 
-    # Simulate accelerate's device map generation
-    static_weights = 0
+    # Calculate static weights based on the provided device_map
     meta_model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=dtype, device_map="meta")
-    max_memory = get_max_mem_dict()
-
-    # Get the device map
-    device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
     
     vram_weights = 0
     other_layers_sizes = []
@@ -28,21 +23,24 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
         else:
             other_layers_sizes.append(module_size)
     
+    # The space needed on VRAM is the sum of layers on VRAM plus the largest layer that needs to be loaded in.
     max_other_layer = max(other_layers_sizes) if other_layers_sizes else 0
     static_weights = vram_weights + max_other_layer
 
     # Calculate the budget and requirement
-    vram_budget = (available_vram - static_weights) - 1 * 1e9
+    # Subtract 1GB for safety margin and other overheads
+    vram_budget = (available_vram - static_weights) - 1 * 1e9 
     p = 2 if dtype == torch.float16 else 4
-    h = config.hidden_size
-    num_heads = config.num_attention_heads
+    h = model_config.hidden_size
+    num_heads = model_config.num_attention_heads
 
+    # Peak activation memory
     attention_size = batch_size * num_heads * max_seq_len * max_seq_len * p
     ffn_size = batch_size * max_seq_len * (h * 4) * p
     peak_activ = ffn_size + attention_size
 
     # Calculate KV Cache size
-    num_layers = config.num_hidden_layers
+    num_layers = model_config.num_hidden_layers
     kv_cache_size = num_layers * 2 * batch_size * max_seq_len * h * p
     vram_need = peak_activ + kv_cache_size
 
@@ -52,10 +50,12 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
         print("⚠️OOM Risk Warning")
         print("="*60)
         print(f"Current model '{model_name}' has a high risk of OOM errors with the given configuration.")
-        print(f"\n- Available VRAM: {available_vram / 1e9:.2f} GiB")
-        print(f"- Static weights: {static_weights / 1e9:.2f} GiB")
-        print(f"- VRAM remaining: {vram_budget / 1e9:.2f} GiB")
-        print(f"- VRAM required: {vram_need / 1e9:.2f} GiB (Activations: {peak_activ / 1e9:.2f} GiB, KV Cache: {kv_cache_size / 1e9:.2f} GiB)")
+        print(f"\n- VRAM Budget (Available - Static Weights - Safety Margin): {vram_budget / 1e9:.2f} GiB")
+        print(f"  - Available VRAM: {available_vram / 1e9:.2f} GiB")
+        print(f"  - Static Weights (on VRAM + largest offloaded layer): {static_weights / 1e9:.2f} GiB")
+        print(f"- VRAM Required (Activations + KV Cache): {vram_need / 1e9:.2f} GiB")
+        print(f"  - Peak Activations: {peak_activ / 1e9:.2f} GiB")
+        print(f"  - KV Cache: {kv_cache_size / 1e9:.2f} GiB")
         print("\n---")
         print("💡Suggestions:")
         print("---")
@@ -101,12 +101,17 @@ def get_model_device_mem(model: torch.nn.Module, device_map: dict) -> dict:
         
     return device_sizes
 
-def get_max_mem_dict():
+def get_auto_memory_map():
+    """
+    Generates a memory map for Accelerate's device_map='auto'.
+    It uses the total memory of each device as a guideline.
+    """
     max_memory = {}
     # VRAM
     if torch.cuda.is_available():
-        free_vram_bytes, _ = torch.cuda.mem_get_info(0)
-        gpu_mem_gb = int((free_vram_bytes / (1024**3)) * 0.95)
+        total_vram_bytes = torch.cuda.get_device_properties(0).total_memory
+        # Leave a small buffer (e.g., 1 GB) for OS and other processes
+        gpu_mem_gb = int((total_vram_bytes / (1024**3)) - 1)
         max_memory[torch.cuda.current_device()] = f"{gpu_mem_gb}GB"
 
     # RAM
