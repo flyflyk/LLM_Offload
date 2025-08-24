@@ -1,6 +1,7 @@
 import torch
 import logging
 import time
+import psutil
 from typing import List
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
 from accelerate import Accelerator
@@ -33,9 +34,31 @@ class AccelerateRunner:
             model_kwargs["device_map"] = "auto"
             model_kwargs["offload_folder"] = getattr(config, 'OFFLOAD_FOLDER', 'offload_dir')
             
-            max_ram_gb = getattr(config, 'OFFLOAD_FOLDER_MAX_CPU_OFFLOAD_RAM_GB', 0)
+            # Build max_memory dictionary with auto-detected VRAM and CPU RAM
+            max_memory = {}
+            if torch.cuda.is_available():
+                # Get free VRAM and set a budget (95% of free) to be safe
+                free_vram_bytes, _ = torch.cuda.mem_get_info(0)
+                gpu_mem_gb = int((free_vram_bytes / (1024**3)) * 0.95)
+                max_memory[f"cuda:{torch.cuda.current_device()}"] = f"{gpu_mem_gb}GB"
+                logger.info(f"Detected {gpu_mem_gb}GB of free VRAM. Setting as GPU memory limit.")
+
+            # Handle CPU memory limit based on config
+            cpu_mem_config_gb = getattr(config, 'OFFLOAD_FOLDER_MAX_CPU_OFFLOAD_RAM_GB', 0)
+            max_ram_gb = 0
+            if cpu_mem_config_gb == -1:  # Auto-detect available RAM
+                available_ram_bytes = psutil.virtual_memory().available
+                max_ram_gb = int((available_ram_bytes / (1024**3)) * 0.95)
+                logger.info(f"Auto-detecting CPU RAM. Setting limit to {max_ram_gb}GB (95% of available).")
+            elif cpu_mem_config_gb > 0:  # Use specified RAM limit
+                max_ram_gb = cpu_mem_config_gb
+                logger.info(f"Using specified CPU RAM limit: {max_ram_gb}GB.")
+
             if max_ram_gb > 0:
-                model_kwargs["max_memory"] = { "cpu": f"{max_ram_gb}GB"}
+                max_memory["cpu"] = f"{max_ram_gb}GB"
+
+            if max_memory:
+                model_kwargs["max_memory"] = max_memory
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             model_kwargs["device_map"] = "auto"

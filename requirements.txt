@@ -5,3 +5,4 @@ numpy
 tqdm
 pulp
 attrs
+psutil
