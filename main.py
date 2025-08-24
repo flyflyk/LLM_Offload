@@ -8,8 +8,6 @@ import logging
 
 from src.accelerate import config
 from src.accelerate.logger import setup_logging
-from src.accelerate import config
-from src.accelerate.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
 from src.auto_policy.profiler import get_hardware_profile
@@ -17,10 +15,6 @@ from src.auto_policy.cost_model import CostModel, get_model_info
 from src.auto_policy.optimizer import find_best_policy
 from src.utils.memory import oom_check, check_vram
 from src.utils.prompts import generate_prompt
-from src.runners.flex_runner import FlexRunner
-from src.auto_policy.profiler import get_hardware_profile
-from src.auto_policy.cost_model import CostModel, get_model_info
-from src.auto_policy.optimizer import find_best_policy
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
