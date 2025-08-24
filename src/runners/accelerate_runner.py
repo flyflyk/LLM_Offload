@@ -52,17 +52,12 @@ class AccelerateRunner:
                 self.streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
         logger.info(f"Model '{self.model_name}' loaded in {self.model_load_time:.4f} seconds.")
-        if hasattr(self.model, 'hf_device_map'):
-            logger.info(f"Model device map: {self.model.hf_device_map}")
-            device_sizes = get_model_device_mem(self.model, self.model.hf_device_map)
-            # Convert to GB
-            for device, total_size in device_sizes.items():
-                device_sizes[device] = f"{total_size / (1024**3):.4f} GB"
-
-            if device_sizes:
-                logger.info(f"Model weights size per device (GB): {device_sizes}")
-        else:
-            logger.info(f"Model loaded on device: {self.device}")
+        device_sizes = get_model_device_mem(self.model, self.model.hf_device_map)
+        # Convert to GB
+        for device, total_size in device_sizes.items():
+            device_sizes[device] = f"{total_size / (1024**3):.4f} GB"
+        if device_sizes:
+            logger.info(f"Model weights size per device (GB): {device_sizes}")
 
     def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:
         if not prompts or not all(prompts):

@@ -24,9 +24,6 @@ if flexllmgen_path not in sys.path:
     sys.path.insert(0, flexllmgen_path)
 from flexllmgen.flex_opt import Policy, CompressionConfig
 
-
-# --- Main Execution Modes ---
-
 def run_accelerate_mode(args):
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
