@@ -8,7 +8,15 @@ import logging
 
 from src.accelerate import config
 from src.accelerate.logger import setup_logging
+from src.accelerate import config
+from src.accelerate.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
+from src.runners.flex_runner import FlexRunner
+from src.auto_policy.profiler import get_hardware_profile
+from src.auto_policy.cost_model import CostModel, get_model_info
+from src.auto_policy.optimizer import find_best_policy
+from src.utils.memory import oom_check, check_vram
+from src.utils.prompts import generate_prompt
 from src.runners.flex_runner import FlexRunner
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
@@ -21,43 +29,17 @@ if flexllmgen_path not in sys.path:
 from flexllmgen.flex_opt import Policy, CompressionConfig
 
 
-# --- Helper Functions ---
-
-def check_vram(args):
-    """Checks if the model weights can fit into the available VRAM."""
-    if not torch.cuda.is_available():
-        print("CUDA is not available. Cannot perform VRAM check.")
-        return False
-
-    print("--- Performing VRAM Pre-check for All-GPU Policy ---")
-    model_info = get_model_info(args.model, 1, 1)
-    model_size_gb = model_info.weight_size_gb
-    free_vram_bytes, _ = torch.cuda.mem_get_info(0)
-    free_vram_gb = free_vram_bytes / (1024**3)
-
-    print(f"Estimated Model Size: {model_size_gb:.2f} GB")
-    print(f"Available VRAM: {free_vram_gb:.2f} GB")
-
-    if model_size_gb > free_vram_gb * 0.95:
-        print("Model is too large to fit entirely in VRAM.")
-        return False
-    
-    print("Model should fit in VRAM.")
-    return True
-
-def generate_prompt(input_len):
-    """Generates a prompt of a specific token length."""
-    base_prompt = "Infinitely write a never-ending story for the following prompt. The salt spray was a constant companion to Thomas, the keeper of the Porthgarrow Lighthouse."
-    prompt_words = base_prompt.split()
-    multiplier = (input_len // len(prompt_words)) + 1
-    return " ".join((prompt_words * multiplier)[:input_len])
-
 # --- Main Execution Modes ---
 
 def run_accelerate_mode(args):
-    """Runs the standard accelerate mode."""
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
+
+    # OOM Pre-check
+    max_seq_len = args.input_len + args.gen_len
+    if not oom_check(model_name=args.model, batch_size=args.batch_size, max_seq_len=max_seq_len):
+        logger.error("Pre-flight check failed. Aborting execution to prevent OOM error.")
+        return
 
     streaming_mode = "Streaming" if config.ENABLE_STREAMING else "Default"
     kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
@@ -82,11 +64,6 @@ def run_accelerate_mode(args):
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
 def run_flex_mode(args, use_autoflex=False):
-    """
-    Runs FlexLLMGen with a specific policy.
-    If use_autoflex is True, it finds the optimal policy first.
-    Otherwise, it uses a default all-on-GPU policy.
-    """
     framework_name = "AutoFlex" if use_autoflex else "FlexGen (All-GPU)"
     setup_logging()
     logger = logging.getLogger(__name__)
@@ -104,7 +81,7 @@ def run_flex_mode(args, use_autoflex=False):
             return None
         logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
     else:
-        if not check_vram(args):
+        if not check_vram(args, get_model_info):
             logger.error("Not enough VRAM for FlexGen (All-GPU). Use '--mode autoflex'.")
             return None
         logger.info("Using default All-GPU policy.")
@@ -144,7 +121,6 @@ def run_flex_mode(args, use_autoflex=False):
 
 
 def run_benchmark_mode(args):
-    """Runs a comparative benchmark between Accelerate, FlexGen, and AutoFlex."""
     print("--- Starting Benchmark Mode ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     

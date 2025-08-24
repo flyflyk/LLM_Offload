@@ -3,7 +3,7 @@ import logging
 import time
 import psutil
 from typing import List
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer, AutoConfig
 from accelerate import Accelerator
 
 logger = logging.getLogger(__name__)
