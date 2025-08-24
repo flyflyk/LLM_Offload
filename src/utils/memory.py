@@ -30,7 +30,11 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
     ffn_size = batch_size * max_seq_len * (h * 4) * p
     peak_activ = ffn_size + attention_size
     max_layer_size = (h * h * 4 + h * 4 * h) * p
-    vram_need = peak_activ + max_layer_size
+
+    # Calculate KV Cache size
+    num_layers = config.num_hidden_layers
+    kv_cache_size = num_layers * 2 * batch_size * max_seq_len * h * p
+    vram_need = peak_activ + max_layer_size + kv_cache_size
 
     # Final Decision
     if vram_need > vram_budget:
@@ -41,7 +45,7 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
         print(f"\n- Available VRAM: {available_vram / 1e9:.2f} GiB")
         print(f"- Static weights: {static_weights / 1e9:.2f} GiB")
         print(f"- VRAM remaining: {vram_budget / 1e9:.2f} GiB")
-        print(f"- Total budget: {vram_need / 1e9:.2f} GiB (Activations ~{peak_activ / 1e9:.2f} GiB)")
+        print(f"- VRAM required: {vram_need / 1e9:.2f} GiB (Activations: {peak_activ / 1e9:.2f} GiB, KV Cache: {kv_cache_size / 1e9:.2f} GiB)")
         print("\n---")
         print("💡Suggestions:")
         print("---")
@@ -51,7 +55,7 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
         print("="*60)
         return False
 
-    print(f"INFO - [Pre-check] - VRAM usage analysis passed. VRAM budget: {vram_budget / 1e9:.2f} GiB. Estimated requirement: {vram_need / 1e9:.2f} GiB.")
+    print(f"INFO - [Pre-check] - VRAM usage analysis passed. VRAM budget: {vram_budget / 1e9:.2f} GiB. Estimated requirement: {vram_need / 1e9:.2f} GiB (including KV Cache).")
     return True
 
 def check_vram(args, get_model_info):
