@@ -17,8 +17,19 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
 
     # Get the device map
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
-    device_sizes = get_model_device_mem(meta_model, device_map)
-    static_weights = sum(size for device, size in device_sizes.items() if device == 0 or (isinstance(device, str) and 'cuda' in device))
+    
+    vram_weights = 0
+    other_layers_sizes = []
+    for layer_name, device in device_map.items():
+        module = meta_model.get_submodule(layer_name)
+        module_size = sum(p.numel() * p.element_size() for p in module.parameters())
+        if "cuda" in str(device):
+            vram_weights += module_size
+        else:
+            other_layers_sizes.append(module_size)
+    
+    max_other_layer = max(other_layers_sizes) if other_layers_sizes else 0
+    static_weights = vram_weights + max_other_layer
 
     # Calculate the budget and requirement
     vram_budget = (available_vram - static_weights) - 1 * 1e9
