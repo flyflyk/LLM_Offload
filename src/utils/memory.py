@@ -20,8 +20,8 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
     device_sizes = get_model_device_mem(meta_model, device_map)
     static_weights = sum(size for device, size in device_sizes.items() if device == 0 or (isinstance(device, str) and 'cuda' in device))
 
-    # Calculate the budget and requirement
-    vram_budget = available_vram - static_weights
+    # Calculate the budget and requirement, adding a 20% safety margin for fragmentation
+    vram_budget = (available_vram - static_weights) * 0.8
     p = 2 if dtype == torch.float16 else 4
     h = config.hidden_size
     num_heads = config.num_attention_heads
@@ -51,7 +51,7 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
         print("="*60)
         return False
 
-    print(f"INFO - [Pre-check] - VRAM usage analysis passed. Precise budget: {vram_budget / 1e9:.2f} GiB. Estimated requirement: {vram_need / 1e9:.2f} GiB.")
+    print(f"INFO - [Pre-check] - VRAM usage analysis passed. VRAM budget: {vram_budget / 1e9:.2f} GiB. Estimated requirement: {vram_need / 1e9:.2f} GiB.")
     return True
 
 def check_vram(args, get_model_info):
