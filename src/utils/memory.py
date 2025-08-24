@@ -21,7 +21,7 @@ def oom_check(model_name: str, batch_size: int, max_seq_len: int, dtype: torch.d
     static_weights = sum(size for device, size in device_sizes.items() if device == 0 or (isinstance(device, str) and 'cuda' in device))
 
     # Calculate the budget and requirement
-    vram_budget = (available_vram - static_weights) - 0.5 * 1e9
+    vram_budget = (available_vram - static_weights) - 1 * 1e9
     p = 2 if dtype == torch.float16 else 4
     h = config.hidden_size
     num_heads = config.num_attention_heads
