@@ -12,7 +12,7 @@ class AccelerateRunner:
         self.model_name = model_name
         self.config = config
         self.p_type = p_type
-        self.use_accelerate = getattr(config, 'USE_ACCELERATE', False)
+        self.use_accelerate = getattr(config, 'ENABLE_STREAMING', False)
         self.accelerator = None
         self.streamer = None
         self.model_load_time = 0
