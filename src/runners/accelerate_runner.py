@@ -4,7 +4,7 @@ import time
 from typing import List
 from transformers import AutoTokenizer, AutoModelForCausalLM, TextStreamer, AutoConfig
 from accelerate import Accelerator
-from src.utils.memory import get_model_device_mem, get_max_mem_dict
+from src.utils.memory import get_model_device_mem
 
 logger = logging.getLogger(__name__)
 
