@@ -1,26 +1,6 @@
 import torch
 import psutil
-from transformers import AutoConfig, AutoModelForCausalLM
-from accelerate import infer_auto_device_map
 from src.accelerate import config
-
-def check_vram(args, get_model_info):
-    """Checks if the model weights can fit into the available VRAM."""
-    print("--- Performing VRAM Pre-check for All-GPU Policy ---")
-    model_info = get_model_info(args.model, 1, 1)
-    model_size_gb = model_info.weight_size_gb
-    free_vram_bytes, _ = torch.cuda.mem_get_info(0)
-    free_vram_gb = free_vram_bytes / (1024**3)
-
-    print(f"Estimated Model Size: {model_size_gb:.2f} GB")
-    print(f"Available VRAM: {free_vram_gb:.2f} GB")
-
-    if model_size_gb > free_vram_gb * 0.95:
-        print("Model is too large to fit entirely in VRAM.")
-        return False
-    
-    print("Model should fit in VRAM.")
-    return True
 
 def get_model_device_mem(model: torch.nn.Module, device_map: dict) -> dict:
     """

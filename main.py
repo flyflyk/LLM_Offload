@@ -1,5 +1,4 @@
 import argparse
-import gc
 import time
 import torch
 import os
@@ -10,20 +9,11 @@ from src.accelerate import config
 from src.accelerate.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
-from src.auto_policy.profiler import get_hardware_profile
-from src.auto_policy.cost_model import CostModel, get_model_info
-from src.auto_policy.optimizer import find_best_policy
-from src.utils.memory import check_vram, get_auto_memory_map
+from src.utils.memory import get_auto_memory_map
 from src.utils.benchmark import log_metrics, cleanup_mem
 from accelerate import infer_auto_device_map
 from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
-
-# Add the FlexLLMGen submodule to the Python path
-flexllmgen_path = os.path.abspath("./FlexLLMGen")
-if flexllmgen_path not in sys.path:
-    sys.path.insert(0, flexllmgen_path)
-from flexllmgen.flex_opt import Policy, CompressionConfig
 
 def run_accelerate_mode(args):
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
@@ -68,42 +58,16 @@ def run_flex_mode(args, use_autoflex=False):
     logger = logging.getLogger(__name__)
     logger.info(f"--- Starting Execution ({framework_name}) ---")
 
-    policy = None
-    if use_autoflex:
-        logger.info("Finding optimal policy for AutoFlex...")
-        hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
-        cost_model = CostModel(hardware_profile)
-        model_info = get_model_info(args.model, args.batch_size, args.input_len + args.gen_len)
-        policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, args.batch_size)
-        if not policy:
-            logger.error("Could not find an optimal policy for AutoFlex. Exiting.")
-            return None
-        logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
-    else:
-        if not check_vram(args, get_model_info):
-            logger.error("Not enough VRAM for FlexGen (All-GPU). Use '--mode autoflex'.")
-            return None
-        logger.info("Using default All-GPU policy.")
-        policy = Policy(
-            gpu_batch_size=args.batch_size, num_gpu_batches=1,
-            w_gpu_percent=100, w_cpu_percent=0,
-            cache_gpu_percent=100, cache_cpu_percent=0,
-            act_gpu_percent=100, act_cpu_percent=0,
-            overlap=True, sep_layer=True, pin_weight=True,
-            cpu_cache_compute=False, attn_sparsity=1.0,
-            compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
-            compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
-        )
-
     runner = FlexRunner(
         model_name=args.model,
-        policy=policy,
+        use_autoflex=use_autoflex,
+        args=args,
         offload_dir=os.path.expanduser(args.offload_dir),
         cache_dir=os.path.expanduser(args.path)
     )
     
-    prompt_text = generate_prompt(args.input_len)
-    prompts = [prompt_text] * args.batch_size
+    prompt = generate_prompt(args.input_len)
+    prompts = [prompt] * args.batch_size
 
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
     runner.cleanup()
