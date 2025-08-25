@@ -32,5 +32,5 @@ def setup_logging(level=LOG_LEVEL, log_file=None):
         handlers=handlers,
         force=True
     )
-    logging.getLogger(__name__).info(f"Logging configured. Level: {logging.getLevelName(level)}. Log file: {log_file if log_file else 'Console only'}")
+    
     _logger_configured = True

@@ -11,7 +11,7 @@ PROMPT_LIST = [
     "What is the capital of Japan?",
 ]
 BATCH_SIZE = 4
-ENABLE_STREAMING = False
+ENABLE_OFFLOAD = False
 ENABLE_KV_OFFLOAD = False
 PROMPT_LOG = False
 OFFLOAD_FOLDER = "offload_dir"

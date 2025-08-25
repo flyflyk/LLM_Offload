@@ -87,7 +87,7 @@ python main.py --mode accelerate [OPTIONS]
 
 **`Accelerate/config.py` 設定:**
 
-*   `ENABLE_STREAMING`: 是否啟用自動 offload 模式。
+*   `ENABLE_OFFLOAD`: 是否啟用自動 offload 模式。
 *   `ENABLE_KV_OFFLOAD`: 是否啟用 KV Cache Offload。
 *   `OFFLOAD_FOLDER`: 權重 offload 的儲存路徑。
 

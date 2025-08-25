@@ -2,9 +2,10 @@ import gc
 import torch
 import logging
 
-def log_metrics(framework: str, throughput: float, infer_time: float, model_load_time: float):
+def log_metrics(framework: str, throughput: float, infer_time: float, model_load_time: float, model_name: str):
     logger = logging.getLogger(__name__)
     logger.info("--- Performance Metrics ---")
+    logger.info(f"Model: {model_name}")
     logger.info(f"Framework: {framework}")
     logger.info(f"Model Load Time: {model_load_time:.4f}s")
     logger.info(f"Total Inference Time: {infer_time:.4f}s")

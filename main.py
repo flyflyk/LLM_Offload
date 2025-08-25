@@ -21,7 +21,6 @@ def run_accelerate_mode(args):
     p_type = torch.float16
 
     # --- Generate Device Map ---
-    logger.info("Inferring device map for the model...")
     meta_model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=p_type, device_map="meta")
     max_memory = get_auto_memory_map()
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
@@ -29,11 +28,10 @@ def run_accelerate_mode(args):
     del meta_model
     cleanup_mem()
 
-    streaming_mode = "Streaming" if config.ENABLE_STREAMING else "Default"
+    offload_mode = "Offload" if config.ENABLE_OFFLOAD else "Default"
     kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
-    current_mode = f"{streaming_mode}{kv_offload_mode}"
+    current_mode = f"{offload_mode}{kv_offload_mode}"
     logger.info(f"--- Starting Execution (Accelerate - {current_mode}) ---")
-    logger.info(f"Model: {args.model}, Batch size: {args.batch_size}")
 
     runner = AccelerateRunner(model_name=args.model, config=config, device_map=device_map, p_type=p_type)
     prompt_text = generate_prompt(args.input_len)
@@ -48,7 +46,8 @@ def run_accelerate_mode(args):
         framework="Accelerate",
         throughput=throughput,
         infer_time=result["inference_time"],
-        model_load_time=runner.model_load_time
+        model_load_time=runner.model_load_time,
+        model_name=args.model
     )
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
@@ -79,7 +78,8 @@ def run_flex_mode(args, use_autoflex=False):
         framework=framework_name,
         throughput=throughput,
         infer_time=result["inference_time"],
-        model_load_time=result["load_time"]
+        model_load_time=result["load_time"],
+        model_name=args.model
     )
     return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 

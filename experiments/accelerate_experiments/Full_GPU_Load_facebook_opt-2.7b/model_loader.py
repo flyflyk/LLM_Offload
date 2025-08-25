@@ -4,7 +4,7 @@ import time
 import os
 import shutil
 import logging
-from config import ENABLE_STREAMING, OFFLOAD_FOLDER, MAX_CPU_OFFLOAD_RAM_GB, DEVICE
+from config import ENABLE_OFFLOAD, OFFLOAD_FOLDER, MAX_CPU_OFFLOAD_RAM_GB, DEVICE
 
 logger = logging.getLogger(__name__)
 
