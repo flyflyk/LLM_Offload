@@ -42,6 +42,9 @@ class AccelerateRunner:
 
         if self.use_accelerate:
             self.model = self.accelerator.prepare(self.model)
+
+        logger.info("Compiling the model...")
+        self.model = torch.compile(self.model, mode="reduce-overhead")
         
         end_time = time.time()
         self.model_load_time = end_time - start_time
@@ -85,6 +88,9 @@ class AccelerateRunner:
         
         if use_streamer_for_this_run:
             generation_kwargs["streamer"] = self.streamer
+
+        if self.config.ENABLE_KV_OFFLOAD:
+            generation_kwargs["cache_implementation"] = "offloaded_static"
 
         start_time = time.time()
         with torch.no_grad():
