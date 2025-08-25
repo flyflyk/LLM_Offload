@@ -13,7 +13,8 @@ from src.runners.flex_runner import FlexRunner
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
 from src.auto_policy.optimizer import find_best_policy
-from src.utils.memory import oom_check, check_vram, get_auto_memory_map
+from src.utils.memory import check_vram, get_auto_memory_map
+from src.utils.benchmark import log_metrics, cleanup_mem
 from accelerate import infer_auto_device_map
 from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
@@ -36,14 +37,7 @@ def run_accelerate_mode(args):
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
     logger.info(f"Inferred device map: {device_map}")
     del meta_model
-    gc.collect()
-    torch.cuda.empty_cache()
-
-    # OOM Pre-check
-    max_seq_len = args.input_len + args.gen_len
-    if not oom_check(model_name=args.model, device_map=device_map, batch_size=args.batch_size, max_seq_len=max_seq_len, dtype=p_type):
-        logger.error("Pre-flight check failed. Aborting execution to prevent OOM error.")
-        return
+    cleanup_mem()
 
     streaming_mode = "Streaming" if config.ENABLE_STREAMING else "Default"
     kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
@@ -60,11 +54,12 @@ def run_accelerate_mode(args):
     total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
 
-    logger.info("--- Performance Metrics ---")
-    logger.info(f"Model Load Time: {runner.model_load_time:.4f}s")
-    logger.info(f"Total Inference Time: {result['inference_time']:.4f}s")
-    logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-    logger.info(f"--- Execution Finished Successfully (Accelerate) ---")
+    log_metrics(
+        framework="Accelerate",
+        throughput=throughput,
+        infer_time=result["inference_time"],
+        model_load_time=runner.model_load_time
+    )
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
 def run_flex_mode(args, use_autoflex=False):
@@ -116,11 +111,12 @@ def run_flex_mode(args, use_autoflex=False):
     total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
 
-    logger.info("--- Performance Metrics ---")
-    logger.info(f"Model Load Time: {result['load_time']:.4f}s")
-    logger.info(f"Total Inference Time: {result['inference_time']:.4f}s")
-    logger.info(f"Throughput: {throughput:.2f} tokens/sec")
-    logger.info(f"--- Execution Finished Successfully ({framework_name}) ---")
+    log_metrics(
+        framework=framework_name,
+        throughput=throughput,
+        infer_time=result["inference_time"],
+        model_load_time=result["load_time"]
+    )
     return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 
 
@@ -136,10 +132,7 @@ def run_benchmark_mode(args):
     if accelerate_results:
         results.append(accelerate_results)
     
-    # --- Force Memory Cleanup ---
-    print("--- Forcefully cleaning up VRAM before next test ---")
-    gc.collect()
-    torch.cuda.empty_cache()
+    cleanup_mem()
     time.sleep(2)
 
     # 2. FlexGen (All-GPU)
@@ -148,10 +141,7 @@ def run_benchmark_mode(args):
     if flexgen_results:
         results.append(flexgen_results)
 
-    # --- Force Memory Cleanup ---
-    print("--- Forcefully cleaning up VRAM before next test ---")
-    gc.collect()
-    torch.cuda.empty_cache()
+    cleanup_mem()
     time.sleep(2)
 
     # 3. AutoFlex
