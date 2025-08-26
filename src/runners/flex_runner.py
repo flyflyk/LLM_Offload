@@ -5,11 +5,12 @@ import logging
 import torch
 import argparse
 import json
+from collections import Counter
 from typing import List
 from transformers import AutoTokenizer
 
-from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed
-from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice, TorchTensor, DeviceType
+from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
+from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
@@ -53,10 +54,31 @@ class FlexRunner:
 
     def log_model_info(self):
         device_map = {}
-
         for i, layer in enumerate(self.model.layers):
-            device = self.model.weight_home[i].val[0].device.name
-            
+            # Recursively find all tensors and their devices
+            all_devices = []
+            def get_devices_recursively(value_holder):
+                items = value_holder.val
+                if not isinstance(items, (list, tuple)):
+                    items = [items]
+
+                for item in items:
+                    if hasattr(item, 'device'): # It's a tensor-like object
+                        all_devices.append(item.device.name)
+                    elif isinstance(item, ValueHolder):
+                        get_devices_recursively(item)
+
+            get_devices_recursively(self.model.weight_home[i])
+
+            if not all_devices:
+                device_str = "N/A"
+            else:
+                device_counts = Counter(all_devices)
+                if len(device_counts) == 1:
+                    device_str = list(device_counts.keys())[0]
+                else:
+                    device_str = ", ".join([f"{d}: {c}" for d, c in sorted(device_counts.items())])
+
             if isinstance(layer, InputEmbed):
                 layer_key = "embed_tokens"
             elif isinstance(layer, SelfAttention):
@@ -71,14 +93,15 @@ class FlexRunner:
                 else:
                     layer_key = f"layer.{i}"
 
-            device_map[layer_key] = device
+            device_map[layer_key] = device_str
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
         formatted_map = json.dumps(device_map, indent=4)
         logger.info(formatted_map)
         logger.info(f"-------------------------------------")
-
-        device_sizes = calc_mem_per_device(self.model, device_map)
+        
+        simple_device_map = {k: v.split(',')[0].split(':')[0] for k, v in device_map.items()}
+        device_sizes = calc_mem_per_device(self.model, simple_device_map)
         if device_sizes:
             logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")
 
