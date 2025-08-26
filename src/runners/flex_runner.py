@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def _check_vram(args, get_model_info):
     """Checks if the model weights can fit into VRAM."""
     print("--- Performing VRAM Pre-check for All-GPU Policy ---")
-    model_info = get_model_info(args.model, 1, 1)
+    model_info = get_model_info(args.model, 1)
     model_size_gb = model_info.weight_size_gb
     free_vram_bytes, _ = torch.cuda.mem_get_info(0)
     free_vram_gb = free_vram_bytes / (1024**3)
@@ -136,22 +136,40 @@ class FlexRunner:
             logger.info("Finding optimal policy for AutoFlex...")
             hardware_profile = get_hardware_profile(force_rerun=args.force_rerun_profiler)
             cost_model = CostModel(hardware_profile)
-            model_info = get_model_info(args.model, args.batch_size, args.input_len + args.gen_len)
+            model_info = get_model_info(args.model, args.batch_size)
             policy = find_best_policy(cost_model, model_info, args.input_len, args.gen_len, args.batch_size)
             if not policy:
                 logger.error("Could not find an optimal policy for AutoFlex. Exiting.")
                 return None
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
-            if not _check_vram(args, get_model_info):
-                logger.error("Not enough VRAM for FlexGen (All-GPU). Use '--mode autoflex'. Exiting.")
-                sys.exit(1)
-            logger.info("Using default All-GPU policy.")
+            from src.flexgen import config as flex_config
+            
+            # Validate policy percentages
+            if flex_config.W_GPU_PERCENT + flex_config.W_CPU_PERCENT > 100:
+                raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
+            if flex_config.CACHE_GPU_PERCENT + flex_config.CACHE_CPU_PERCENT > 100:
+                raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
+
+            # Special case: If policy is 100% GPU, perform VRAM check
+            if flex_config.W_GPU_PERCENT == 100 and flex_config.W_CPU_PERCENT == 0:
+                if not _check_vram(args, get_model_info):
+                    logger.error("Not enough VRAM for a 100% GPU policy. "
+                                 "Consider reducing W_GPU_PERCENT in config or use '--mode autoflex'. Exiting.")
+                    sys.exit(1)
+
+            logger.info(f"Using policy from config: "
+                        f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
+                        f"Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}")
+
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
-                w_gpu_percent=100, w_cpu_percent=0,
-                cache_gpu_percent=100, cache_cpu_percent=0,
-                act_gpu_percent=100, act_cpu_percent=0,
+                w_gpu_percent=flex_config.W_GPU_PERCENT,
+                w_cpu_percent=flex_config.W_CPU_PERCENT,
+                cache_gpu_percent=flex_config.CACHE_GPU_PERCENT,
+                cache_cpu_percent=flex_config.CACHE_CPU_PERCENT,
+                act_gpu_percent=flex_config.ACT_GPU_PERCENT,
+                act_cpu_percent=flex_config.ACT_CPU_PERCENT,
                 overlap=True, sep_layer=True, pin_weight=True,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),

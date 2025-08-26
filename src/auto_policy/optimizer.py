@@ -5,9 +5,6 @@ from FlexLLMGen.flexllmgen.flex_opt import Policy, CompressionConfig
 from .cost_model import CostModel, ModelInfo
 
 def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: int, gen_len: int, batch_size: int) -> Policy:
-    """
-    Finds the best offloading policy using a grid search over placement percentages.
-    """
     print("Searching for the optimal policy...")
     
     best_policy = None
@@ -36,8 +33,8 @@ def find_best_policy(cost_model: CostModel, model_info: ModelInfo, prompt_len: i
                 act_gpu_percent=act_gpu, act_cpu_percent=act_cpu,
                 overlap=True, sep_layer=True, pin_weight=True,
                 cpu_cache_compute=False, attn_sparsity=1.0,
-                compress_weight=False, comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
-                compress_cache=False, comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False)
+                compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
+                compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False)
             )
             
             latency = cost_model.predict_latency(policy, model_info, prompt_len, gen_len)

@@ -3,31 +3,25 @@ import dataclasses
 from FlexLLMGen.flexllmgen.flex_opt import Policy
 from FlexLLMGen.flexllmgen.opt_config import get_opt_config, OptConfig
 
-# --- Data Structures ---
-
 @dataclasses.dataclass
 class ModelInfo:
-    """A dataclass to hold size information about the LLM."""
     name: str
     config: OptConfig
-    weight_size_gb: float
-    kv_cache_per_token_gb: float
+    weight_size: float
+    kv_cache_per_token: float
 
-def get_model_info(model_name: str, batch_size: int, max_seq_len: int) -> ModelInfo:
-    """
-    Calculates and returns size information for a given model.
-    """
+def get_model_info(model_name: str, batch_size: int) -> ModelInfo:
     config = get_opt_config(model_name)
     # Note: These are simplified calculations for the cost model.
-    weight_size_gb = config.model_bytes() / 1e9
+    weight_size = config.model_bytes() / 1e9
     # KV cache size per token = num_layers * 2 (k/v) * batch_size * hidden_dim * bytes_per_element
-    kv_cache_per_token_gb = (config.num_hidden_layers * 2 * batch_size * config.input_dim * 2) / 1e9
+    kv_cache_per_token = (config.num_hidden_layers * 2 * batch_size * config.input_dim * 2) / 1e9
     
     return ModelInfo(
         name=model_name,
         config=config,
-        weight_size_gb=weight_size_gb,
-        kv_cache_per_token_gb=kv_cache_per_token_gb
+        weight_size_gb=weight_size,
+        kv_cache_per_token_gb=kv_cache_per_token
     )
 
 class CostModel:
@@ -35,7 +29,6 @@ class CostModel:
         self.profile = hardware_profile
 
     def _get_io_time(self, size_gb: float, placement: str) -> float:
-        """Calculates the time to move a given amount of data to the GPU."""
         if placement == 'gpu':
             return 0.0
         elif placement == 'cpu':
@@ -47,9 +40,6 @@ class CostModel:
         return float('inf')
 
     def predict_latency(self, policy: Policy, model_info: ModelInfo, prompt_len: int, gen_len: int) -> float:
-        """
-        Predicts the total inference latency for a given policy and task.
-        """
         num_layers = model_info.config.num_hidden_layers
         
         # --- 1. Prefill Phase Latency ---

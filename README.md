@@ -112,7 +112,7 @@ python main.py --mode accelerate --model facebook/opt-1.3b --input-len 128 --gen
 
 ### 模式 3: `flexgen` - 手動 FlexGen 推理
 
-此模式使用 FlexLLMGen 框架進行推理，但採用固定的 "全部在 GPU" (all-on-GPU) 策略，適用於當模型能完全載入 VRAM 時的效能測試。
+此模式使用 FlexLLMGen 框架進行推理，也可以透過修改設定檔，手動調整權重在 GPU、CPU 之間的分配比例。
 
 **執行指令:**
 
@@ -131,9 +131,15 @@ python main.py --mode flexgen [OPTIONS]
 **範例:**
 
 ```bash
-# 使用 FlexGen (all-GPU) 進行推理，並將日誌存檔
+# 使用 FlexGen 進行推理，並將日誌存檔
 python main.py --mode flexgen --model facebook/opt-1.3b --input-len 128 --gen-len 128 --batch-size 2
 ```
+
+#### 手動設定卸載策略 (Manual Offloading Policy)
+
+`flexgen` 模式的卸載策略可透過修改設定檔進行手動調整：
+
+*   **設定檔路徑**: `src/flexgen/config.py`
 
 ---
 
