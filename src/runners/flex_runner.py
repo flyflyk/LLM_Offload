@@ -42,7 +42,7 @@ def _check_vram(args, get_model_info):
     return True
 
 class FlexRunner:
-    def __init__(self, model_name: str, use_autoflex: bool, args: argparse.Namespace, offload_dir: str = "./flexgen_offload", cache_dir: str = "./flexgen_cache", device: str = "cuda"):
+    def __init__(self, model_name: str, use_autoflex: bool, args: argparse.Namespace, offload_dir: str = "./flexgen_offload", cache_dir: str = "./flexgen_cache", device: str = "cuda:0"):
         self.model_name = model_name
         self.policy = self.create_policy(args, use_autoflex)
         self.device = TorchDevice(device)
