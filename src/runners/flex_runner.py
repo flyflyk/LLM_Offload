@@ -146,8 +146,8 @@ class FlexRunner:
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
             if not _check_vram(args, get_model_info):
-                logger.error("Not enough VRAM for FlexGen (All-GPU). Use '--mode autoflex'.")
-                return None
+                logger.error("Not enough VRAM for FlexGen (All-GPU). Use '--mode autoflex'. Exiting.")
+                sys.exit(1)
             logger.info("Using default All-GPU policy.")
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
