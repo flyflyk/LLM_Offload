@@ -165,7 +165,7 @@ class FlexRunner:
 
             logger.info(f"Using policy from config: "
                         f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
-                        f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}"
+                        f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}, "
                         f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}")
 
             policy = Policy(
