@@ -20,8 +20,8 @@ def get_model_info(model_name: str, batch_size: int) -> ModelInfo:
     return ModelInfo(
         name=model_name,
         config=config,
-        weight_size_gb=weight_size,
-        kv_cache_per_token_gb=kv_cache_per_token
+        weight_size=weight_size,
+        kv_cache_per_token=kv_cache_per_token
     )
 
 class CostModel:
