@@ -72,19 +72,26 @@ class FlexRunner:
 
     def log_model_info(self):
         device_map = {}
+
+        def get_device_name(weight):
+            if hasattr(weight, 'data'):  # CompressedTorchTensor
+                return weight.data[0].device.name
+            else:  # TorchTensor
+                return weight.device.name
+
         # Embeddings
-        device_map["embed_tokens"] = self.model.weight_home[0].val[0].val.device.name
+        device_map["embed_tokens"] = get_device_name(self.model.weight_home[0].val[0])
 
         # Transformer Layers
         for i in range(1, self.model.num_layers - 1):
             layer = self.model.layers[i]
             if isinstance(layer, SelfAttention):
                 layer_key = f"layers.{layer.layer_id}"
-                device_name = self.model.weight_home[i].val[0].val.device.name
+                device_name = get_device_name(self.model.weight_home[i].val[0])
                 device_map[layer_key] = device_name
 
         # LM Head
-        device_map["lm_head"] = self.model.weight_home[-1].val[2].val.device.name
+        device_map["lm_head"] = get_device_name(self.model.weight_home[-1].val[2])
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
         formatted_map = json.dumps(device_map, indent=4)
@@ -156,7 +163,8 @@ class FlexRunner:
 
             logger.info(f"Using policy from config: "
                         f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
-                        f"Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}")
+                        f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}"
+                        f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}")
 
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
