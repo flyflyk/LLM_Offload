@@ -69,36 +69,33 @@ class FlexRunner:
         self.log_model_size()
 
     def log_model_size(self):
-        device_sizes = {}
+        from src.utils.memory import calc_mem_per_device
+        import json
 
-        def get_tensor_size(tensor):
-            if tensor is None:
-                return
+        # Build a device_map from the FlexGen model structure
+        device_map = {}
+        # Embeddings
+        device_map["embed_tokens"] = self.model.embed_tokens.weight.val.device.name
+        
+        # Transformer Layers
+        for i, layer in enumerate(self.model.layers):
+            layer_key = f"layers.{i}"
+            device_name = layer.w_q.val.device.name
+            device_map[layer_key] = device_name
 
-            if isinstance(tensor, (list, tuple)):
-                for t in tensor:
-                    get_tensor_size(t)
-            elif isinstance(tensor, ValueHolder):
-                get_tensor_size(tensor.val)
-            elif isinstance(tensor, TorchTensor):
-                if tensor.device.device_type == DeviceType.MIXED:
-                    for t in tensor.data[0]:
-                        get_tensor_size(t)
-                else:
-                    device_name = tensor.device.name
-                    if device_name not in device_sizes:
-                        device_sizes[device_name] = 0
-                    device_sizes[device_name] += tensor.bytes
+        # LM Head
+        device_map["lm_head"] = self.model.lm_head.weight.val.device.name
 
-        for layer_weight_holder in self.model.weight_home:
-            get_tensor_size(layer_weight_holder.val)
+        logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
+        # To avoid flooding the console, pretty-print the map
+        formatted_map = json.dumps(device_map, indent=4)
+        logger.info(formatted_map)
+        logger.info(f"-------------------------------------")
 
-        # Convert to GB
-        for device, total_size in device_sizes.items():
-            device_sizes[device] = f"{total_size / (1024**3):.4f} GB"
-
+        # Calculate and log the memory summary as well
+        device_sizes = calc_mem_per_device(self.model, device_map)
         if device_sizes:
-            logger.info(f"[FlexGen] Model weights size per device (GB): {device_sizes}")
+            logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")
 
     def run(self, prompts: List[str], input_len: int, max_new_tokens: int) -> dict:
         if not prompts or not all(prompts):

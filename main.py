@@ -6,7 +6,7 @@ import sys
 import logging
 
 from src.accelerate import config
-from src.accelerate.logger import setup_logging
+from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
 from src.utils.memory import get_device_limit
@@ -52,7 +52,7 @@ def run_accelerate_mode(args):
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
 def run_flex_mode(args, use_autoflex=False):
-    framework_name = "AutoFlex" if use_autoflex else "FlexGen (All-GPU)"
+    framework_name = "AutoFlex" if use_autoflex else "FlexGen"
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info(f"--- Starting Execution ({framework_name}) ---")
