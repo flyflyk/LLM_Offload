@@ -4,16 +4,18 @@ import sys
 import logging
 import torch
 import argparse
-import numpy as np
+import json
 from typing import List
 from transformers import AutoTokenizer
 
 from flexllmgen.flex_opt import OptLM, Policy
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice, TorchTensor, DeviceType
-from flexllmgen.utils import ExecutionEnv, ValueHolder
+from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
 from src.auto_policy.optimizer import find_best_policy
+from src.utils.memory import calc_mem_per_device
+        
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -69,10 +71,7 @@ class FlexRunner:
         self.log_model_size()
 
     def log_model_size(self):
-        from src.utils.memory import calc_mem_per_device
-        import json
-
-        # Build a device_map from the FlexGen model structure
+        
         device_map = {}
         # Embeddings
         device_map["embed_tokens"] = self.model.embed_tokens.weight.val.device.name
@@ -87,12 +86,11 @@ class FlexRunner:
         device_map["lm_head"] = self.model.lm_head.weight.val.device.name
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
-        # To avoid flooding the console, pretty-print the map
         formatted_map = json.dumps(device_map, indent=4)
         logger.info(formatted_map)
         logger.info(f"-------------------------------------")
 
-        # Calculate and log the memory summary as well
+        # Memory summary
         device_sizes = calc_mem_per_device(self.model, device_map)
         if device_sizes:
             logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")
