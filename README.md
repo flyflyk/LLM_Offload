@@ -8,8 +8,8 @@
     *   **OS:** 若要使用 `benchmark` 模式，建議使用 Linux 系統以獲得最準確的效能指標。
     *   **Python:** 建議版本 3.10+
     *   **Anaconda/Miniconda:** 用於管理 Python 環境和依賴。
-    *   **NVIDIA 驅動程式:** 最新的穩定版 NVIDIA 顯示卡驅動程式。
-    *   **PyTorch (GPU 版本):** 前往 [PyTorch 官方網站 Get Started 頁面](https://pytorch.org/get-started/locally/) 安裝與您的 CUDA 版本相容的 PyTorch。
+    *   **CUDA Toolkit(建議 12.9):** [Cuda Toolkit 頁面](https://developer.nvidia.com/cuda-toolkit-archive)
+    *   **PyTorch (GPU 版本):** [PyTorch 官方網站 Get Started 頁面](https://pytorch.org/get-started/locally/) 安裝與 CUDA 版本相容的 PyTorch。
 
 ## 安裝步驟
 
