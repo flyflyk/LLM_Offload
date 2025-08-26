@@ -32,9 +32,15 @@ def calc_mem_per_device(model, device_map: dict) -> dict:
     def get_tensor_size_bytes(tensor):
         # CompressedTorchTensor has a .data attribute which is a list of tensors
         if hasattr(tensor, 'data') and isinstance(tensor.data, list):
-            return sum(p.numel() * p.element_size() for p in tensor.data)
-        else: # TorchTensor
-            return tensor.numel() * tensor.element_size()
+            total_size = 0
+            for sub_tensor in tensor.data:
+                if hasattr(sub_tensor, 'shape') and hasattr(sub_tensor, 'dtype'):
+                    total_size += np.prod(sub_tensor.shape) * torch.tensor([], dtype=sub_tensor.dtype).element_size()
+            return total_size
+        # TorchTensor
+        elif hasattr(tensor, 'shape') and hasattr(tensor, 'dtype'):
+            return np.prod(tensor.shape) * torch.tensor([], dtype=tensor.dtype).element_size()
+        return 0
 
     for layer_name, device in device_map.items():
         if layer_name not in name_to_idx:
