@@ -14,8 +14,7 @@ from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.cost_model import CostModel, get_model_info
 from src.auto_policy.optimizer import find_best_policy
-from src.utils.memory import calc_mem_per_device
-        
+from src.utils.memory import calc_mem_per_device     
 
 # Add the FlexLLMGen submodule to the Python path
 flexllmgen_path = os.path.abspath("./FlexLLMGen")
@@ -24,24 +23,6 @@ if flexllmgen_path not in sys.path:
 from flexllmgen.flex_opt import Policy, CompressionConfig
 
 logger = logging.getLogger(__name__)
-
-def _check_vram(args, get_model_info):
-    """Checks if the model weights can fit into VRAM."""
-    print("--- Performing VRAM Pre-check for All-GPU Policy ---")
-    model_info = get_model_info(args.model, 1)
-    model_size_gb = model_info.weight_size
-    free_vram_bytes, _ = torch.cuda.mem_get_info(0)
-    free_vram_gb = free_vram_bytes / (1024**3)
-
-    print(f"Estimated Model Size: {model_size_gb:.2f} GB")
-    print(f"Available VRAM: {free_vram_gb:.2f} GB")
-
-    if model_size_gb > free_vram_gb * 0.95:
-        print("Model is too large to fit entirely in VRAM.")
-        return False
-    
-    print("Model should fit in VRAM.")
-    return True
 
 class FlexRunner:
     def __init__(self, model_name: str, use_autoflex: bool, args: argparse.Namespace, offload_dir: str = "./flexgen_offload", cache_dir: str = "./flexgen_cache", device: str = "cuda:0"):
@@ -73,12 +54,8 @@ class FlexRunner:
     def log_model_info(self):
         device_map = {}
 
-        def get_device_name(weight):
-            return weight.device.name
-
         for i, layer in enumerate(self.model.layers):
-            # Get the device of the first weight as representative for the layer
-            device = get_device_name(self.model.weight_home[i].val[0])
+            device = self.model.weight_home[i].val[0].device.name
             
             if isinstance(layer, InputEmbed):
                 layer_key = "embed_tokens"
@@ -155,13 +132,6 @@ class FlexRunner:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
             if flex_config.CACHE_GPU_PERCENT + flex_config.CACHE_CPU_PERCENT > 100:
                 raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
-
-            # Special case: If policy is 100% GPU, perform VRAM check
-            if flex_config.W_GPU_PERCENT == 100 and flex_config.W_CPU_PERCENT == 0:
-                if not _check_vram(args, get_model_info):
-                    logger.error("Not enough VRAM for a 100% GPU policy. "
-                                 "Consider reducing W_GPU_PERCENT in config or use '--mode autoflex'. Exiting.")
-                    sys.exit(1)
 
             logger.info(f"Using policy from config: "
                         f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
