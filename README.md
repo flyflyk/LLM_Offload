@@ -132,7 +132,7 @@ python main.py --mode flexgen [OPTIONS]
 
 ```bash
 # 使用 FlexGen (all-GPU) 進行推理，並將日誌存檔
-python main.py --mode flexgen --model facebook/opt-1.3b --input-len 128 --gen-len 128 --log-file log.log
+python main.py --mode flexgen --model facebook/opt-1.3b --input-len 128 --gen-len 128 --batch-size 2
 ```
 
 ---
@@ -164,5 +164,5 @@ python main.py --mode benchmark [OPTIONS]
 
 ```bash
 # 比較三種策略在 opt-1.3b 模型上的表現
-python main.py --mode benchmark --model facebook/opt-1.3b --batch-size 4 --input-len 64 --gen-len 64 --log-file log.log
+python main.py --mode benchmark --model facebook/opt-1.3b --input-len 64 --gen-len 64 --batch-size 4
 ```

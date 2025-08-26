@@ -139,8 +139,10 @@ if __name__ == "__main__":
     parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
     
     # --- FlexGen/AutoFlex Specific Arguments ---
-    parser.add_argument("--path", type=str, default="~/.cache/flexllmgen_cache", help="Path to model weights cache for FlexLLMGen.")
-    parser.add_argument("--offload-dir", type=str, default="~/flexllmgen_offload", help="Offloading directory for FlexLLMGen.")
+    parser.add_argument("--path", type=str, default="/mnt/ssd/flexgen_cache", help="Path to model weights cache for FlexGen.")
+    parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/flexgen_offload", help="Offloading directory for FlexGen.")
+
+    # --- AutoFlex Specific Arguments ---
     parser.add_argument("--force-rerun-profiler", action="store_true", help="Force re-running the hardware profiler for autoflex mode.")
 
     args = parser.parse_args()
