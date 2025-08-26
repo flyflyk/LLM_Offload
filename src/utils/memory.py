@@ -1,20 +1,55 @@
 import torch
 import psutil
+import numpy as np
 from src.accelerate import config
+from flexllmgen.flex_opt import InputEmbed, SelfAttention, MLP, OutputEmbed
 
-def calc_mem_per_device(model: torch.nn.Module, device_map: dict) -> dict:
+def calc_mem_per_device(model, device_map: dict) -> dict:
     """
-    Calculates the memory usage (in GB) of a model on each device based on a given device_map.
+    Calculates the memory usage (in GB) of a FlexGen OptLM model on each device
+    based on a given device_map.
     """
+    name_to_idx = {}
+    for i, layer in enumerate(model.layers):
+        if isinstance(layer, InputEmbed):
+            name_to_idx["embed_tokens"] = i
+        elif isinstance(layer, SelfAttention):
+            name_to_idx[f"decoder.layer.{layer.layer_id}.self_attn"] = i
+        elif isinstance(layer, MLP):
+            name_to_idx[f"decoder.layer.{layer.layer_id}.mlp"] = i
+        elif isinstance(layer, OutputEmbed):
+            name_to_idx["lm_head"] = i
+        else:
+            if hasattr(layer, 'layer_id'):
+                name_to_idx[f"decoder.layer.{layer.layer_id}"] = i
+            else:
+                name_to_idx[f"layer.{i}"] = i
+
     device_sizes = {}
     for device in set(device_map.values()):
         device_sizes[device] = 0
 
+    def get_tensor_size_bytes(tensor):
+        # CompressedTorchTensor has a .data attribute which is a list of tensors
+        if hasattr(tensor, 'data') and isinstance(tensor.data, list):
+            return sum(p.numel() * p.element_size() for p in tensor.data)
+        else: # TorchTensor
+            return tensor.numel() * tensor.element_size()
+
     for layer_name, device in device_map.items():
-        module = model.get_submodule(layer_name)
-        module_size = sum(p.numel() * p.element_size() for p in module.parameters())
-        device_sizes[device] += module_size
-    
+        if layer_name not in name_to_idx:
+            continue
+        
+        layer_idx = name_to_idx[layer_name]
+        # The weights are in a ValueHolder, need to get .val
+        weights = model.weight_home[layer_idx].val
+        
+        layer_size_bytes = 0
+        for weight_tensor in weights:
+            layer_size_bytes += get_tensor_size_bytes(weight_tensor)
+            
+        device_sizes[device] += layer_size_bytes
+
     # Convert bytes to GB
     for device, size_in_bytes in device_sizes.items():
         device_sizes[device] = f"{size_in_bytes / (1024**3):.4f} GB"

@@ -8,7 +8,7 @@ import json
 from typing import List
 from transformers import AutoTokenizer
 
-from flexllmgen.flex_opt import OptLM, Policy, SelfAttention
+from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice, TorchTensor, DeviceType
 from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
@@ -74,32 +74,33 @@ class FlexRunner:
         device_map = {}
 
         def get_device_name(weight):
-            # All weight objects (TorchTensor, CompressedTorchTensor) should have a .device attribute.
             return weight.device.name
 
-        # Embeddings
-        # The first layer (layers[0]) is InputEmbed. Its first weight is the token embedding.
-        device_map["embed_tokens"] = get_device_name(self.model.weight_home[0].val[0])
+        for i, layer in enumerate(self.model.layers):
+            # Get the device of the first weight as representative for the layer
+            device = get_device_name(self.model.weight_home[i].val[0])
+            
+            if isinstance(layer, InputEmbed):
+                layer_key = "embed_tokens"
+            elif isinstance(layer, SelfAttention):
+                layer_key = f"decoder.layer.{layer.layer_id}.self_attn"
+            elif isinstance(layer, MLP):
+                layer_key = f"decoder.layer.{layer.layer_id}.mlp"
+            elif isinstance(layer, OutputEmbed):
+                layer_key = "lm_head"
+            else:
+                if hasattr(layer, 'layer_id'):
+                    layer_key = f"decoder.layer.{layer.layer_id}"
+                else:
+                    layer_key = f"layer.{i}"
 
-        # Transformer Layers
-        for i in range(1, self.model.num_layers - 1):
-            layer = self.model.layers[i]
-            if isinstance(layer, SelfAttention):
-                layer_key = f"layers.{layer.layer_id}"
-                # Use the device of the first weight of this layer as representative.
-                device_name = get_device_name(self.model.weight_home[i].val[0])
-                device_map[layer_key] = device_name
-
-        # LM Head
-        # The last layer is OutputEmbed. Its third weight is the lm_head.
-        device_map["lm_head"] = get_device_name(self.model.weight_home[-1].val[2])
+            device_map[layer_key] = device
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
         formatted_map = json.dumps(device_map, indent=4)
         logger.info(formatted_map)
         logger.info(f"-------------------------------------")
 
-        # Memory summary
         device_sizes = calc_mem_per_device(self.model, device_map)
         if device_sizes:
             logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")

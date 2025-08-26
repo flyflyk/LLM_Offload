@@ -100,13 +100,12 @@ python main.py --mode accelerate --model facebook/opt-1.3b --input-len 128 --gen
 
 #### 智慧型記憶體管理
 
-`accelerate` 模式具備自動偵測並設定記憶體上限的功能，以最大化資源利用率。
+`accelerate` 模式具備自動偵測並設定記憶體上限的功能。
 
-*   **GPU VRAM**: 程序會自動偵測可用的顯示卡記憶體(VRAM)，並使用其中 95% 作為模型加載的上限。
-*   **CPU RAM**: 可以透過修改 `src/accelerate/config.py` 中的 `MAX_CPU_OFFLOAD` 參數來控制 CPU 系統記憶體的使用：
-    *   `MAX_CPU_OFFLOAD = -1`: **(預設值)** 自動偵測可用的系統記憶體，並使用其中 95% 作為上限。
-    *   `MAX_CPU_OFFLOAD = 8`: 使用 8GB 的系統記憶體作為上限。您可以將此數值改為任何正整數。
-    *   `MAX_CPU_OFFLOAD = 0`: 不對系統記憶體的使用設限。
+*   **GPU VRAM**: 系統會自動偵測可用 VRAM，並使用其中 95% 作為模型加載的上限。
+*   **CPU RAM**: 透過修改 `src/accelerate/config.py` 中的 `MAX_CPU_OFFLOAD` 參數來控制 CPU 的使用：
+    *   `MAX_CPU_OFFLOAD = -1`: **(預設值)** 自動偵測可用的 RAM，並使用其中 95% 作為上限。
+    *   `MAX_CPU_OFFLOAD = 0`: 不設限。
 
 ---
 
