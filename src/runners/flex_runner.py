@@ -110,7 +110,7 @@ class FlexRunner:
 
         # Tokenize and create a batch
         tokenized_prompts = self.tokenizer(prompts, padding="max_length", max_length=input_len, truncation=True, return_tensors="np").input_ids
-        input_ids_batch = np.tile(tokenized_prompts, (len(prompts), 1))
+        input_ids_batch = tokenized_prompts
 
         start_time = time.time()
         with torch.no_grad():
