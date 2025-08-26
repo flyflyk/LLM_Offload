@@ -2,59 +2,48 @@ import torch
 import psutil
 import numpy as np
 from src.accelerate import config
-from flexllmgen.flex_opt import InputEmbed, SelfAttention, MLP, OutputEmbed
+from flexllmgen.flex_opt import ValueHolder
 
-def calc_mem_per_device(model, device_map: dict) -> dict:
+def calc_mem_per_device(model) -> dict:
     """
-    Calculates the memory usage (in GB) of a FlexGen OptLM model on each device
-    based on a given device_map.
+    Calculates the memory usage of model on each device.
     """
-    name_to_idx = {}
-    for i, layer in enumerate(model.layers):
-        if isinstance(layer, InputEmbed):
-            name_to_idx["embed_tokens"] = i
-        elif isinstance(layer, SelfAttention):
-            name_to_idx[f"decoder.layer.{layer.layer_id}.self_attn"] = i
-        elif isinstance(layer, MLP):
-            name_to_idx[f"decoder.layer.{layer.layer_id}.mlp"] = i
-        elif isinstance(layer, OutputEmbed):
-            name_to_idx["lm_head"] = i
-        else:
-            if hasattr(layer, 'layer_id'):
-                name_to_idx[f"decoder.layer.{layer.layer_id}"] = i
-            else:
-                name_to_idx[f"layer.{i}"] = i
-
     device_sizes = {}
-    for device in set(device_map.values()):
-        device_sizes[device] = 0
 
-    def get_tensor_size_bytes(tensor):
-        # CompressedTorchTensor has a .data attribute which is a list of tensors
+    def get_tensor_size(tensor):
         if hasattr(tensor, 'data') and isinstance(tensor.data, list):
             total_size = 0
             for sub_tensor in tensor.data:
                 if hasattr(sub_tensor, 'shape') and hasattr(sub_tensor, 'dtype'):
                     total_size += np.prod(sub_tensor.shape) * torch.tensor([], dtype=sub_tensor.dtype).element_size()
             return total_size
-        # TorchTensor
         elif hasattr(tensor, 'shape') and hasattr(tensor, 'dtype'):
             return np.prod(tensor.shape) * torch.tensor([], dtype=tensor.dtype).element_size()
         return 0
 
-    for layer_name, device in device_map.items():
-        if layer_name not in name_to_idx:
-            continue
+    def get_all_tensors(value_holder):
+        all_tensors = []
+        items = value_holder.val
+        if not isinstance(items, (list, tuple)):
+            items = [items]
+
+        for item in items:
+            if hasattr(item, 'device'): # It's a tensor-like object
+                all_tensors.append(item)
+            elif isinstance(item, ValueHolder): # It's a nested ValueHolder
+                all_tensors.extend(get_all_tensors(item))
+        return all_tensors
+
+    for i, _ in enumerate(model.layers):
+        all_weight_tensors = get_all_tensors(model.weight_home[i])
         
-        layer_idx = name_to_idx[layer_name]
-        # The weights are in a ValueHolder, need to get .val
-        weights = model.weight_home[layer_idx].val
-        
-        layer_size_bytes = 0
-        for weight_tensor in weights:
-            layer_size_bytes += get_tensor_size_bytes(weight_tensor)
+        for weight_tensor in all_weight_tensors:
+            device = weight_tensor.device.name
+            if device not in device_sizes:
+                device_sizes[device] = 0
             
-        device_sizes[device] += layer_size_bytes
+            tensor_size = get_tensor_size(weight_tensor)
+            device_sizes[device] += tensor_size
 
     # Convert bytes to GB
     for device, size_in_bytes in device_sizes.items():

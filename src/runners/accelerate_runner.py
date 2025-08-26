@@ -2,7 +2,7 @@ import torch
 import logging
 import time
 from typing import List
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from accelerate import Accelerator
 from src.utils.memory import calc_mem_per_device
 
@@ -42,7 +42,7 @@ class AccelerateRunner:
         end_time = time.time()
         self.model_load_time = end_time - start_time
 
-        device_sizes = calc_mem_per_device(self.model, self.model.hf_device_map)
+        device_sizes = calc_mem_per_device(self.model)
         logger.info(f"Model weights size per device (GB): {device_sizes}")
 
     def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:

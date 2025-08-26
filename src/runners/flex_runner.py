@@ -55,9 +55,8 @@ class FlexRunner:
     def log_model_info(self):
         device_map = {}
         for i, layer in enumerate(self.model.layers):
-            # Recursively find all tensors and their devices
             all_devices = []
-            def get_devices_recursively(value_holder):
+            def get_devices(value_holder):
                 items = value_holder.val
                 if not isinstance(items, (list, tuple)):
                     items = [items]
@@ -66,10 +65,9 @@ class FlexRunner:
                     if hasattr(item, 'device'): # It's a tensor-like object
                         all_devices.append(item.device.name)
                     elif isinstance(item, ValueHolder):
-                        get_devices_recursively(item)
+                        get_devices(item)
 
-            get_devices_recursively(self.model.weight_home[i])
-
+            get_devices(self.model.weight_home[i])
             if not all_devices:
                 device_str = "N/A"
             else:
@@ -94,14 +92,12 @@ class FlexRunner:
                     layer_key = f"layer.{i}"
 
             device_map[layer_key] = device_str
-
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
         formatted_map = json.dumps(device_map, indent=4)
         logger.info(formatted_map)
         logger.info(f"-------------------------------------")
         
-        simple_device_map = {k: v.split(',')[0].split(':')[0] for k, v in device_map.items()}
-        device_sizes = calc_mem_per_device(self.model, simple_device_map)
+        device_sizes = calc_mem_per_device(self.model)
         if device_sizes:
             logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")
 
