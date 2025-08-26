@@ -27,7 +27,7 @@ def _check_vram(args, get_model_info):
     """Checks if the model weights can fit into VRAM."""
     print("--- Performing VRAM Pre-check for All-GPU Policy ---")
     model_info = get_model_info(args.model, 1)
-    model_size_gb = model_info.weight_size_gb
+    model_size_gb = model_info.weight_size
     free_vram_bytes, _ = torch.cuda.mem_get_info(0)
     free_vram_gb = free_vram_bytes / (1024**3)
 
