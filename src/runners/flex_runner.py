@@ -74,12 +74,11 @@ class FlexRunner:
         device_map = {}
 
         def get_device_name(weight):
-            if hasattr(weight, 'data'):  # CompressedTorchTensor
-                return weight.data[0].device.name
-            else:  # TorchTensor
-                return weight.device.name
+            # All weight objects (TorchTensor, CompressedTorchTensor) should have a .device attribute.
+            return weight.device.name
 
         # Embeddings
+        # The first layer (layers[0]) is InputEmbed. Its first weight is the token embedding.
         device_map["embed_tokens"] = get_device_name(self.model.weight_home[0].val[0])
 
         # Transformer Layers
@@ -87,10 +86,12 @@ class FlexRunner:
             layer = self.model.layers[i]
             if isinstance(layer, SelfAttention):
                 layer_key = f"layers.{layer.layer_id}"
+                # Use the device of the first weight of this layer as representative.
                 device_name = get_device_name(self.model.weight_home[i].val[0])
                 device_map[layer_key] = device_name
 
         # LM Head
+        # The last layer is OutputEmbed. Its third weight is the lm_head.
         device_map["lm_head"] = get_device_name(self.model.weight_home[-1].val[2])
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
