@@ -9,7 +9,7 @@ from src.accelerate import config
 from src.accelerate.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
-from src.utils.memory import get_auto_memory_map
+from src.utils.memory import get_device_limit
 from src.utils.benchmark import log_metrics, cleanup_mem
 from accelerate import infer_auto_device_map
 from transformers import AutoModelForCausalLM
@@ -22,7 +22,7 @@ def run_accelerate_mode(args):
 
     # --- Generate Device Map ---
     meta_model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=p_type, device_map="meta")
-    max_memory = get_auto_memory_map()
+    max_memory = get_device_limit()
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
     logger.info(f"Inferred device map: {device_map}")
     del meta_model

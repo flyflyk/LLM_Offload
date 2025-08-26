@@ -4,7 +4,7 @@ import time
 from typing import List
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 from accelerate import Accelerator
-from src.utils.memory import get_model_device_mem
+from src.utils.memory import calc_mem_per_device
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +42,8 @@ class AccelerateRunner:
         end_time = time.time()
         self.model_load_time = end_time - start_time
 
-        device_sizes = get_model_device_mem(self.model, self.model.hf_device_map)
-        # Convert to GB
-        for device, total_size in device_sizes.items():
-            device_sizes[device] = f"{total_size / (1024**3):.4f} GB"
-        if device_sizes:
-            logger.info(f"Model weights size per device (GB): {device_sizes}")
+        device_sizes = calc_mem_per_device(self.model, self.model.hf_device_map)
+        logger.info(f"Model weights size per device (GB): {device_sizes}")
 
     def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:
         if not prompts or not all(prompts):

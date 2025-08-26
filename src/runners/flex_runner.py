@@ -66,8 +66,6 @@ class FlexRunner:
 
         end_time = time.time()
         self.model_load_time = end_time - start_time
-
-        logger.info(f"[FlexGen] Model loaded in {self.model_load_time:.4f} seconds.")
         self.log_model_size()
 
     def log_model_size(self):
