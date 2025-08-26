@@ -36,8 +36,6 @@ class AccelerateRunner:
             self.model = self.accelerator.prepare(self.model)
         else:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
-        self.model = torch.compile(self.model, mode="reduce-overhead")
         
         end_time = time.time()
         self.model_load_time = end_time - start_time
@@ -66,7 +64,7 @@ class AccelerateRunner:
         }
         
         if self.config.ENABLE_KV_OFFLOAD:
-            generation_kwargs["cache_implementation"] = "offloaded_static"
+            generation_kwargs["cache_implementation"] = "offloaded"
 
         start_time = time.time()
         with torch.no_grad():
