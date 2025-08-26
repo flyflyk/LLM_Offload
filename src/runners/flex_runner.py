@@ -8,7 +8,7 @@ import json
 from typing import List
 from transformers import AutoTokenizer
 
-from flexllmgen.flex_opt import OptLM, Policy
+from flexllmgen.flex_opt import OptLM, Policy, SelfAttention
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice, TorchTensor, DeviceType
 from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
@@ -68,22 +68,23 @@ class FlexRunner:
 
         end_time = time.time()
         self.model_load_time = end_time - start_time
-        self.log_model_size()
+        self.log_model_info()
 
-    def log_model_size(self):
-        
+    def log_model_info(self):
         device_map = {}
         # Embeddings
-        device_map["embed_tokens"] = self.model.embed_tokens.weight.val.device.name
-        
+        device_map["embed_tokens"] = self.model.weight_home[0].val[0].val.device.name
+
         # Transformer Layers
-        for i, layer in enumerate(self.model.layers):
-            layer_key = f"layers.{i}"
-            device_name = layer.w_q.val.device.name
-            device_map[layer_key] = device_name
+        for i in range(1, self.model.num_layers - 1):
+            layer = self.model.layers[i]
+            if isinstance(layer, SelfAttention):
+                layer_key = f"layers.{layer.layer_id}"
+                device_name = self.model.weight_home[i].val[0].val.device.name
+                device_map[layer_key] = device_name
 
         # LM Head
-        device_map["lm_head"] = self.model.lm_head.weight.val.device.name
+        device_map["lm_head"] = self.model.weight_home[-1].val[2].val.device.name
 
         logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
         formatted_map = json.dumps(device_map, indent=4)
