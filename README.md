@@ -70,7 +70,7 @@ python main.py --mode autoflex --model facebook/opt-2.7b --input-len 512 --gen-l
 
 ### 模式 2: `accelerate` - 手動 Accelerate 推理
 
-此模式直接使用 Hugging Face Accelerate 框架進行推理。您可以透過修改 `Accelerate/config.py` 來手動啟用或停用 KV Cache Offload 和 Streaming 模式。
+此模式直接使用 Hugging Face Accelerate 框架進行推理。您可以透過修改 `src/Accelerate/config.py` 來手動啟用或停用 KV Cache Offload 和 Streaming 模式。
 
 **執行指令:**
 
@@ -146,7 +146,7 @@ python main.py --mode flexgen --model facebook/opt-1.3b --input-len 128 --gen-le
 
 此模式會對以下三種策略進行基準測試，並在最後提供一份詳細的效能比較報告：
 
-1.  **Accelerate**: 使用 Hugging Face Accelerate (根據 `Accelerate/config.py` 的設定)。
+1.  **Accelerate**: 使用 Hugging Face Accelerate (根據 `src/Accelerate/config.py` 的設定)。
 2.  **FlexGen (All-GPU)**: 使用 FlexLLMGen 並將模型完全載入 GPU。
 3.  **AutoFlex**: 使用 FlexLLMGen 並由系統自動尋找最佳卸載策略。
 
