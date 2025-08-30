@@ -25,6 +25,32 @@ from flexllmgen.flex_opt import Policy, CompressionConfig
 
 logger = logging.getLogger(__name__)
 
+
+class DebugOptLM(OptLM):
+    def init_weight(self, j):
+        layer_name = self.layers[j].__class__.__name__
+        if hasattr(self.layers[j], 'layer_id'):
+            layer_name += f" (ID: {self.layers[j].layer_id})"
+
+        # Log memory BEFORE calling the parent method
+        if self.env.gpu:
+            torch.cuda.synchronize(self.env.gpu.dev)
+            logger.info(f"--- VRAM state BEFORE loading layer {j} ({layer_name}) ---")
+            logger.info(torch.cuda.memory_summary(self.env.gpu.dev, abbreviated=True))
+        
+        super().init_weight(j)
+
+        # Log memory AFTER calling the parent method
+        if self.env.gpu:
+            torch.cuda.synchronize(self.env.gpu.dev)
+            logger.info(f"--- VRAM state AFTER loading layer {j} ({layer_name}) ---")
+            try:
+                logger.info(torch.cuda.memory_summary(self.env.gpu.dev, abbreviated=True))
+            except Exception as e:
+                logger.error(f"Could not get memory summary after layer {j}: {e}")
+            logger.info("-" * (60 + len(str(j)) + len(layer_name)))
+
+
 class FlexRunner:
     def __init__(self, model_name: str, use_autoflex: bool, args: argparse.Namespace, offload_dir: str = "./flexgen_offload", cache_dir: str = "./flexgen_cache", device: str = "cuda:0"):
         self.model_name = model_name
@@ -36,6 +62,7 @@ class FlexRunner:
         self.model_load_time = 0
 
         logger.info(f"[FlexGen] Loading model '{model_name}' with a custom policy...")
+        logger.info("Using DebugOptLM to get detailed memory logs during model loading.")
 
         start_time = time.time()
 
@@ -46,7 +73,7 @@ class FlexRunner:
         disk = TorchDisk(offload_dir, num_copy_threads=1)
         self.env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
-        self.model = OptLM(self.model_name, self.env, cache_dir, self.policy)
+        self.model = DebugOptLM(self.model_name, self.env, cache_dir, self.policy)
 
         end_time = time.time()
         self.model_load_time = end_time - start_time
