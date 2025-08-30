@@ -6,3 +6,4 @@ tqdm
 pulp
 attrs
 psutil
+metaseq
