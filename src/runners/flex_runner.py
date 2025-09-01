@@ -320,7 +320,7 @@ class FlexRunner:
                         f"Weights(GPU/CPU): {self.config.w_gpu_percent}/{self.config.w_cpu_percent}, "
                         f"KV Cache(GPU/CPU): {self.config.cache_gpu_percent}/{self.config.cache_cpu_percent}, "
                         f"Activations(GPU/CPU): {self.config.act_gpu_percent}/{self.config.act_cpu_percent}, "
-                        f"Pinned-Memory-for-Weights: {args.pin_weight}")
+                        f"Pinned-Memory-for-Weights: {self.config.pin_weight}")
 
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
@@ -330,7 +330,7 @@ class FlexRunner:
                 cache_cpu_percent=self.config.cache_cpu_percent,
                 act_gpu_percent=self.config.act_gpu_percent,
                 act_cpu_percent=self.config.act_cpu_percent,
-                overlap=True, sep_layer=True, pin_weight=args.pin_weight,
+                overlap=True, sep_layer=True, pin_weight=self.config.pin_weight,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
                 compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
