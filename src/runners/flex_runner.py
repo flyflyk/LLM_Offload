@@ -63,7 +63,6 @@ class FlexRunner:
     def get_policy_info(self):
         return {
             "Weights (GPU/CPU/Disk) %": f"{self.policy.w_gpu_percent:.1f} / {self.policy.w_cpu_percent:.1f} / {(100 - self.policy.w_gpu_percent - self.policy.w_cpu_percent):.1f}",
-            "KV Cache (GPU/CPU/Disk) %": f"{self.policy.cache_gpu_percent:.1f} / {self.policy.cache_cpu_percent:.1f} / {(100 - self.policy.cache_gpu_percent - self.policy.cache_cpu_percent):.1f}",
         }
 
     def get_model_info(self):
