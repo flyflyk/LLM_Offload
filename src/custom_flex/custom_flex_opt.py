@@ -12,26 +12,23 @@ from FlexLLMGen.flexllmgen.pytorch_backend import (
 from FlexLLMGen.flexllmgen.utils import ValueHolder
 
 def init_weight_list(weight_specs, policy, env, model):
-    devices = [env.gpu, env.cpu, env.disk]
-    
-    # Access the global state from the model object
-    dev_capacities = model.dev_capacities
-    dev_used = model.dev_used
+    gpu_capacity, cpu_capacity, disk_capacity = model.dev_capacities
+    gpu_limit = gpu_capacity
+    cpu_limit = gpu_capacity + cpu_capacity
 
     ret = []
     for spec in weight_specs:
         shape, dtype, filename = spec
         size_bytes = np.prod(shape) * np.dtype(dtype).itemsize
-        
-        home = None
-        for i in range(len(devices)):
-            if dev_used[i] + size_bytes <= dev_capacities[i]:
-                home = devices[i]
-                dev_used[i] += size_bytes
-                break
-        
-        if home is None:
-            raise ValueError("Could not find a device with enough capacity for a weight.")
+        if model.dev_used[0] < gpu_limit:
+            home = env.gpu
+        elif model.dev_used[0] < cpu_limit:
+            home = env.cpu
+        else:
+            home = env.disk
+
+        # Increment the total processed size.
+        model.dev_used[0] += size_bytes
 
         if len(shape) < 2:
             pin_memory = True
@@ -157,7 +154,6 @@ class CustomOptLM(OptLM):
         self.policy = policy
         self.num_gpu_batches = policy.num_gpu_batches
 
-        # Create layers, passing a reference to self (the model)
         layers = []
         layers.append(CustomInputEmbed(self, self.config, self.env, self.policy))
         for i in range(self.config.num_hidden_layers):
@@ -205,10 +201,10 @@ class CustomOptLM(OptLM):
 
         total_model_size_bytes = sum(np.prod(spec[0]) * np.dtype(spec[1]).itemsize for spec in all_weight_specs)
 
-        # Store global state on the model object itself
         self.dev_capacities = [
             total_model_size_bytes * (self.policy.w_gpu_percent / 100.0),
             total_model_size_bytes * (self.policy.w_cpu_percent / 100.0),
             total_model_size_bytes * (self.policy.w_disk_percent / 100.0),
         ]
-        self.dev_used = [0, 0, 0]
+        # Use a single counter for total processed size for partitioning
+        self.dev_used = [0]
