@@ -89,7 +89,7 @@ python main.py --mode accelerate --model facebook/opt-6.7b --batch-size 8
 **模式專屬設定 (`src/configs/flexgen.yaml`):**
 
 ```yaml
-path: "/mnt/ssd/offload_dir" # 用於儲存 FlexGen 下載和轉換後的模型權重的目錄
+cache_path: "/mnt/ssd/flexgen_cache" # 用於儲存 FlexGen 下載和轉換後的模型權重的目錄
 pin_weight: True # 是否使用鎖頁記憶體
 
 # 權重卸載比例

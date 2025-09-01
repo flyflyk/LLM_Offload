@@ -42,7 +42,7 @@ class FlexRunner:
 
         start_time = time.time()
 
-        cache_dir = os.path.expanduser(config.path)
+        cache_dir = os.path.expanduser(config.cache_path)
         offload_dir = os.path.expanduser(common_args.offload_dir)
         os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(offload_dir, exist_ok=True)

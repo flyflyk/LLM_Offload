@@ -1,4 +1,4 @@
-path: "/mnt/ssd/offload_dir"
+cache_path: "/mnt/ssd/flexgen_cache"
 pin_weight: True
 
 w_gpu_percent: 100
