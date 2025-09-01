@@ -174,25 +174,25 @@ class FlexRunner:
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
             # Validate policy percentages
-            if self.config.W_GPU_PERCENT + self.config.W_CPU_PERCENT > 100:
+            if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
-            if self.config.CACHE_GPU_PERCENT + self.config.CACHE_CPU_PERCENT > 100:
+            if self.config.cache_gpu_percent + self.config.cache_cpu_percent > 100:
                 raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
 
             logger.info(f"Using policy from config: "
-                        f"Weights(GPU/CPU): {self.config.W_GPU_PERCENT}/{self.config.W_CPU_PERCENT}, "
-                        f"KV Cache(GPU/CPU): {self.config.CACHE_GPU_PERCENT}/{self.config.CACHE_CPU_PERCENT}, "
-                        f"Activations(GPU/CPU): {self.config.ACT_GPU_PERCENT}/{self.config.ACT_CPU_PERCENT}, "
+                        f"Weights(GPU/CPU): {self.config.w_gpu_percent}/{self.config.w_cpu_percent}, "
+                        f"KV Cache(GPU/CPU): {self.config.cache_gpu_percent}/{self.config.cache_cpu_percent}, "
+                        f"Activations(GPU/CPU): {self.config.act_gpu_percent}/{self.config.act_cpu_percent}, "
                         f"Pinned-Memory-for-Weights: {self.config.PIN_WEIGHT}")
 
             policy = Policy(
                 gpu_batch_size=common_args.batch_size, num_gpu_batches=1,
-                w_gpu_percent=self.config.W_GPU_PERCENT,
-                w_cpu_percent=self.config.W_CPU_PERCENT,
-                cache_gpu_percent=self.config.CACHE_GPU_PERCENT,
-                cache_cpu_percent=self.config.CACHE_CPU_PERCENT,
-                act_gpu_percent=self.config.ACT_GPU_PERCENT,
-                act_cpu_percent=self.config.ACT_CPU_PERCENT,
+                w_gpu_percent=self.config.w_gpu_percent,
+                w_cpu_percent=self.config.w_cpu_percent,
+                cache_gpu_percent=self.config.cache_gpu_percent,
+                cache_cpu_percent=self.config.cache_cpu_percent,
+                act_gpu_percent=self.config.act_gpu_percent,
+                act_cpu_percent=self.config.act_cpu_percent,
                 overlap=True, sep_layer=True, pin_weight=self.config.PIN_WEIGHT,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
@@ -311,25 +311,25 @@ class FlexRunner:
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
             # Validate policy percentages
-            if self.config.W_GPU_PERCENT + self.config.W_CPU_PERCENT > 100:
+            if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
-            if self.config.CACHE_GPU_PERCENT + self.config.CACHE_CPU_PERCENT > 100:
+            if self.config.cache_gpu_percent + self.config.cache_cpu_percent > 100:
                 raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
 
             logger.info(f"Using policy from config: "
-                        f"Weights(GPU/CPU): {self.config.W_GPU_PERCENT}/{self.config.W_CPU_PERCENT}, "
-                        f"KV Cache(GPU/CPU): {self.config.CACHE_GPU_PERCENT}/{self.config.CACHE_CPU_PERCENT}, "
-                        f"Activations(GPU/CPU): {self.config.ACT_GPU_PERCENT}/{self.config.ACT_CPU_PERCENT}, "
+                        f"Weights(GPU/CPU): {self.config.w_gpu_percent}/{self.config.w_cpu_percent}, "
+                        f"KV Cache(GPU/CPU): {self.config.cache_gpu_percent}/{self.config.cache_cpu_percent}, "
+                        f"Activations(GPU/CPU): {self.config.act_gpu_percent}/{self.config.act_cpu_percent}, "
                         f"Pinned-Memory-for-Weights: {args.pin_weight}")
 
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
-                w_gpu_percent=self.config.W_GPU_PERCENT,
-                w_cpu_percent=self.config.W_CPU_PERCENT,
-                cache_gpu_percent=self.config.CACHE_GPU_PERCENT,
-                cache_cpu_percent=self.config.CACHE_CPU_PERCENT,
-                act_gpu_percent=self.config.ACT_GPU_PERCENT,
-                act_cpu_percent=self.config.ACT_CPU_PERCENT,
+                w_gpu_percent=self.config.w_gpu_percent,
+                w_cpu_percent=self.config.w_cpu_percent,
+                cache_gpu_percent=self.config.cache_gpu_percent,
+                cache_cpu_percent=self.config.cache_cpu_percent,
+                act_gpu_percent=self.config.act_gpu_percent,
+                act_cpu_percent=self.config.act_cpu_percent,
                 overlap=True, sep_layer=True, pin_weight=args.pin_weight,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
