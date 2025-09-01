@@ -67,12 +67,6 @@
 
 使用標準的 Hugging Face `accelerate` 函式庫進行推理。
 
-**執行指令:**
-
-```bash
-python main.py --mode accelerate --model [MODEL_NAME] [其他參數]
-```
-
 **模式專屬設定 (`src/configs/accelerate.yaml`):**
 
 ```yaml
@@ -91,12 +85,6 @@ python main.py --mode accelerate --model facebook/opt-6.7b --batch-size 8
 ### 模式二: `flexgen`
 
 使用 `FlexGen` 框架，允許手動控制權重、快取和激活值在 GPU、CPU 和硬碟之間的分配。
-
-**執行指令:**
-
-```bash
-python main.py --mode flexgen --model [MODEL_NAME] [其他參數]
-```
 
 **模式專屬設定 (`src/configs/flexgen.yaml`):**
 
@@ -128,12 +116,6 @@ python main.py --mode flexgen --model facebook/opt-30b
 
 此模式會自動分析硬體，並為 `FlexGen` 尋找最佳的資源分配策略以最大化吞吐量（throughput）。
 
-**執行指令:**
-
-```bash
-python main.py --mode autoflex --model [MODEL_NAME] [其他參數]
-```
-
 **模式專屬設定 (`src/configs/autoflex.yaml`):**
 
 ```yaml
@@ -150,12 +132,6 @@ python main.py --mode autoflex --model facebook/opt-6.7b --input-len 512 --gen-l
 ### 模式四: `benchmark`
 
 執行基準測試，比較 `accelerate`、`flexgen`（使用全 GPU 策略）和 `autoflex` 的效能。
-
-**執行指令:**
-
-```bash
-python main.py --mode benchmark --model [MODEL_NAME] [其他參數]
-```
 
 **範例:**
 
