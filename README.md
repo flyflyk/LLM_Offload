@@ -1,165 +1,153 @@
+# LLM 推理框架
+
+本專案提供一個統一的介面，用以執行和評測大型語言模型（LLM），並支援多種不同的卸載（offloading）與推理策略，它整合了 Hugging Face 的 `accelerate` 框架、 `FlexGen` 框架，分別用於標準及精細的的資源卸載。
+
 ## 環境需求
 
 *   **硬體:**
-    *   **NVIDIA GPU:** 一張支援 CUDA 的 NVIDIA 顯示卡。
-    *   **RAM:** 取決於所選模型大小。
-    *   **儲存空間:** 存放模型快取。
+    *   一張支援 CUDA 的 NVIDIA GPU。
+    *   RAM 與儲存空間大小取決於您選擇的模型。
 *   **軟體:**
-    *   **OS:** 若要使用 `benchmark` 模式，建議使用 Linux 系統以獲得最準確的效能指標。
-    *   **Python:** 建議版本 3.10+
+    *   **作業系統:** Linux 系統(Ubuntu24.04)。
     *   **Anaconda/Miniconda:** 用於管理 Python 環境和依賴。
-    *   **CUDA Toolkit(建議 12.9):** [Cuda Toolkit 頁面](https://developer.nvidia.com/cuda-toolkit-archive)
-    *   **PyTorch (GPU 版本):** [PyTorch 官方網站 Get Started 頁面](https://pytorch.org/get-started/locally/) 安裝與 CUDA 版本相容的 PyTorch。
+    *   **Python:** 3.10 以上(3.12.11)。
+    *   **CUDA Toolkit:** 11.8 以上(12.9)。
+    *   **PyTorch:** 與 CUDA 版本相容的 PyTorch。
 
 ## 安裝步驟
 
-### 1. 取得專案檔案
+1.  **複製專案庫:**
 
-```bash
-git clone https://github.com/flyflyk/LLM_Offload.git
-cd LLM_Offload
-git submodule update --init --recursive # 初始化 submodule
-```
+    ```bash
+    git clone https://github.com/flyflyk/LLM_Offload.git
+    cd LLM_Offload
+    git submodule update --init --recursive
+    ```
 
-### 2. 建立 Conda 環境並安裝依賴
+2.  **建立 Conda 環境並安裝依賴套件:**
 
-```bash
-# 建立 Conda 環境
-conda create -n llm_inference_env python=3.12 -y
-conda activate llm_inference_env
+    ```bash
+    # 建立並啟用 Conda 環境
+    conda create -n llm_inference_env python=3.12 -y
+    conda activate llm_inference_env
 
-# 安裝依賴套件
-pip install -r requirements.txt
-pip install -e FlexLLMGen
-```
+    # 安裝依賴套件
+    pip install -r requirements.txt
+    pip install -e FlexLLMGen
+    ```
+
+---
+
+## 設定理念
+
+將所有設定標準化為一條簡單的規則：
+
+1.  **通用參數**：適用於所有模式的參數（如模型名稱、批次大小），統一透過**命令列參數**來設定。
+2.  **模式專屬參數**：僅適用於特定推理模式的參數，則在該模式對應的 **`config.py` 設定檔**中進行配置。
+
+---
 
 ## 使用方法
 
-此專案啟動腳本是 `main.py`，它提供了四種不同的執行模式，透過 `--mode` 參數進行切換。
+專案的主要啟動腳本是 `main.py`，可以透過 `--mode` 參數來選擇所需的推理策略。
 
----
+### 通用命令列參數
 
-### 通用參數
+適用於所有模式的參數：
 
-所有模式都能使用的參數:
-*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
-*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
+*   `--mode`: 執行模式。可選：`accelerate`, `flexgen`, `autoflex`, `benchmark`。(預設: `accelerate`)
+*   `--model`: 要使用的 Hugging Face 模型。 (預設: `facebook/opt-1.3b`)
+*   `--input-len`: 輸入提示的 Token 長度。(預設: `128`)
+*   `--gen-len`: 要生成的 Token 數量。(預設: `32`)
+*   `--batch-size`: 一次處理的提示數量（批次大小）。(預設: `1`)
+*   `--offload-dir`: 用於將張量（tensors）卸載到硬碟的通用目錄。(預設: `/mnt/ssd/offload_dir`)
+*   `--log-file`: 日誌檔案的儲存路徑。(預設: `log.log`)
 
-### 模式 1: `autoflex` - 自動化策略推理 (推薦)
+### 模式一: `accelerate`
 
-此模式會自動分析您的硬體配置，為指定的模型尋找最佳的 GPU/CPU/Disk 資源分配策略，並使用 FlexLLMGen 執行高效推理。
-
-**執行指令:**
-
-```bash
-python main.py --mode autoflex [OPTIONS]
-```
-
-**[OPTIONS]:**
-
-*   `--path`: FlexLLMGen 模型權重的儲存路徑 (預設: `~/flexllmgen_cache`)。
-*   `--offload-dir`: 權重卸載 (offload) 的暫存目錄 (預設: `~/flexllmgen_offload`)。
-*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
-*   `--force-rerun-profiler`: 強制重新執行硬體分析，即使已有快取檔案。
-
-**範例:**
-
-```bash
-# 使用 opt-2.7b 模型，並自動尋找最佳卸載策略進行推理
-python main.py --mode autoflex --model facebook/opt-2.7b --input-len 512 --gen-len 64 --batch-size 4
-```
-
----
-
-### 模式 2: `accelerate` - 手動 Accelerate 推理
-
-此模式直接使用 Hugging Face Accelerate 框架進行推理。您可以透過修改 `src/Accelerate/config.py` 來手動啟用或停用 KV Cache Offload 和 Streaming 模式。
+使用標準的 Hugging Face `accelerate` 函式庫進行推理。
 
 **執行指令:**
 
 ```bash
-python main.py --mode accelerate [OPTIONS]
+python main.py --mode accelerate --model [MODEL_NAME] [其他參數]
 ```
 
-**`Accelerate/config.py` 設定:**
+**模式專屬設定 (`src/accelerate/config.py`):**
 
-*   `ENABLE_OFFLOAD`: 是否啟用自動 offload 模式。
-*   `ENABLE_KV_OFFLOAD`: 是否啟用 KV Cache Offload。
-*   `OFFLOAD_FOLDER`: 權重 offload 的儲存路徑。
+*   `ENABLE_OFFLOAD` (bool): 將權重卸載至 `--offload-dir` 指定目錄。
+*   `ENABLE_KV_OFFLOAD` (bool): 將 KV 快取卸載至 CPU RAM。
 
 **範例:**
 
 ```bash
-# 使用 Accelerate 進行標準推理
-python main.py --mode accelerate --model facebook/opt-1.3b --input-len 128 --gen-len 128 --batch-size 2
+# 使用 accelerate 模式及批次大小 8 來執行 OPT-6.7B 模型
+python main.py --mode accelerate --model facebook/opt-6.7b --batch-size 8
 ```
 
-#### 智慧型記憶體管理
+### 模式二: `flexgen`
 
-`accelerate` 模式具備自動偵測並設定記憶體上限的功能。
-
-*   **GPU VRAM**: 系統會自動偵測可用 VRAM，並使用其中 95% 作為模型加載的上限。
-*   **CPU RAM**: 透過修改 `src/accelerate/config.py` 中的 `MAX_CPU_OFFLOAD` 參數來控制 CPU 的使用：
-    *   `MAX_CPU_OFFLOAD = -1`: **(預設值)** 自動偵測可用的 RAM，並使用其中 95% 作為上限。
-    *   `MAX_CPU_OFFLOAD = 0`: 不設限。
-
----
-
-### 模式 3: `flexgen` - 手動 FlexGen 推理
-
-此模式使用 FlexLLMGen 框架進行推理，也可以透過修改設定檔，手動調整權重在 GPU、CPU 之間的分配比例。
+使用 `FlexGen` 框架，允許手動控制權重、快取和激活值在 GPU、CPU 和硬碟之間的分配。
 
 **執行指令:**
 
 ```bash
-python main.py --mode flexgen [OPTIONS]
+python main.py --mode flexgen --model [MODEL_NAME] [其他參數]
 ```
 
-**[OPTIONS]:**
+**模式專屬設定 (`src/flexgen/config.py`):**
 
-*   `--log-file`: (可選) 將模型權重分佈的日誌儲存到指定檔案。
-*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
+*   `PATH` (str): 用於儲存 `FlexGen` 下載和轉換後的模型權重的目錄。
+*   `PIN_WEIGHT` (bool): 是否使用鎖頁記憶體（Pinned Memory），停用此選項可以卸載更大的模型到 RAM，但可能會犧牲一點效能。
+*   `W_GPU_PERCENT`, `W_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的權重百分比。
+*   `CACHE_GPU_PERCENT`, `CACHE_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的 KV 快取百分比。
+*   `ACT_GPU_PERCENT`, `ACT_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的激活值百分比。
 
 **範例:**
 
 ```bash
-# 使用 FlexGen 進行推理，並將日誌存檔
-python main.py --mode flexgen --model facebook/opt-1.3b --input-len 128 --gen-len 128 --batch-size 2
+# 如要執行一個大型模型並將大部分權重放在 CPU，請先編輯 src/flexgen/config.py:
+# W_GPU_PERCENT = 10
+# W_CPU_PERCENT = 90
+# PIN_WEIGHT = False
+
+python main.py --mode flexgen --model facebook/opt-30b
 ```
 
-#### 手動設定卸載策略 (Manual Offloading Policy)
+### 模式三: `autoflex`
 
-`flexgen` 模式的卸載策略可透過修改設定檔進行手動調整：
-
-*   **設定檔路徑**: `src/flexgen/config.py`
-
----
-
-### 模式 4: `benchmark` - 框架效能比較
-
-此模式會對以下三種策略進行基準測試，並在最後提供一份詳細的效能比較報告：
-
-1.  **Accelerate**: 使用 Hugging Face Accelerate (根據 `src/Accelerate/config.py` 的設定)。
-2.  **FlexGen (All-GPU)**: 使用 FlexLLMGen 並將模型完全載入 GPU。
-3.  **AutoFlex**: 使用 FlexLLMGen 並由系統自動尋找最佳卸載策略。
+此模式會自動分析硬體，並為 `FlexGen` 尋找最佳的資源分配策略以最大化吞吐量（throughput）。
 
 **執行指令:**
 
 ```bash
-python main.py --mode benchmark [OPTIONS]
+python main.py --mode autoflex --model [MODEL_NAME] [其他參數]
 ```
 
-**[OPTIONS]:**
+**模式專屬設定 (`src/autoflex/config.py`):**
 
-*   `--log-file`: (可選) 將所有框架的模型權重分佈日誌儲存到指定檔案。
-*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
-*   `--force-rerun-profiler`: (可選) 在 AutoFlex 測試中，強制重新執行硬體分析。
+*   `FORCE_RERUN_PROFILER` (bool): 若設為 `True`，將強制重新執行硬體分析，即使已存在分析快取。
 
 **範例:**
 
 ```bash
-# 比較三種策略在 opt-1.3b 模型上的表現
-python main.py --mode benchmark --model facebook/opt-1.3b --input-len 64 --gen-len 64 --batch-size 4
+# 為 OPT-6.7B 自動尋找最佳策略
+python main.py --mode autoflex --model facebook/opt-6.7b --input-len 512 --gen-len 64
+```
+
+### 模式四: `benchmark`
+
+執行基準測試，比較 `accelerate`、`flexgen`（使用全 GPU 策略）和 `autoflex` 的效能。
+
+**執行指令:**
+
+```bash
+python main.py --mode benchmark --model [MODEL_NAME] [其他參數]
+```
+
+**範例:**
+
+```bash
+# 使用批次大小 4，評測 OPT-2.7B 的表現
+python main.py --mode benchmark --model facebook/opt-2.7b --batch-size 4
 ```

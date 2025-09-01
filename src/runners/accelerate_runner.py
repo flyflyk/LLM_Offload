@@ -9,7 +9,7 @@ from src.utils.memory import calc_mem_per_device
 logger = logging.getLogger(__name__)
 
 class AccelerateRunner:
-    def __init__(self, model_name: str, config: object, device_map: dict, p_type: torch.dtype = torch.float16):
+    def __init__(self, model_name: str, config: object, device_map: dict, offload_folder: str, p_type: torch.dtype = torch.float16):
         self.model_name = model_name
         self.config = config
         self.p_type = p_type
@@ -27,7 +27,7 @@ class AccelerateRunner:
         model_kwargs = {
             "torch_dtype": self.p_type,
             "device_map": self.device_map,
-            "offload_folder": getattr(config, 'OFFLOAD_FOLDER', 'offload_dir')
+            "offload_folder": offload_folder
         }
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
         if self.use_offload:

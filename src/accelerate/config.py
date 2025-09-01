@@ -1,7 +1,6 @@
 ENABLE_OFFLOAD = True
 ENABLE_KV_OFFLOAD = False
 PROMPT_LOG = False
-OFFLOAD_FOLDER = "offload_dir"
 MAX_CPU_OFFLOAD = -1
 DEVICE = "cuda"
 LOG_FILE = "log.log"

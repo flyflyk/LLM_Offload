@@ -5,7 +5,6 @@ import os
 import sys
 import logging
 
-from src.accelerate import config
 from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
@@ -17,7 +16,8 @@ from src.utils.prompts import generate_prompt
 from flexllmgen.opt_config import get_opt_config
 
 def run_accelerate_mode(args):
-    setup_logging(log_file=getattr(config, 'LOG_FILE', None))
+    from src.accelerate import config as accelerate_config
+    setup_logging(log_file=args.log_file)
     logger = logging.getLogger(__name__)
     p_type = torch.float16
 
@@ -34,12 +34,18 @@ def run_accelerate_mode(args):
     del meta_model
     cleanup_mem()
 
-    offload_mode = "Offload" if config.ENABLE_OFFLOAD else "Default"
-    kv_offload_mode = " + KV Offload" if config.ENABLE_KV_OFFLOAD else ""
+    offload_mode = "Offload" if accelerate_config.ENABLE_OFFLOAD else "Default"
+    kv_offload_mode = " + KV Offload" if accelerate_config.ENABLE_KV_OFFLOAD else ""
     current_mode = f"{offload_mode}{kv_offload_mode}"
     logger.info(f"--- Starting Execution (Accelerate - {current_mode}) ---")
 
-    runner = AccelerateRunner(model_name=args.model, config=config, device_map=device_map, p_type=p_type)
+    runner = AccelerateRunner(
+        model_name=args.model, 
+        config=accelerate_config, 
+        device_map=device_map, 
+        offload_folder=args.offload_dir,
+        p_type=p_type
+    )
     prompt_text = generate_prompt(args.input_len)
     prompts = [prompt_text] * args.batch_size
 
@@ -63,17 +69,18 @@ def run_accelerate_mode(args):
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
 def run_flex_mode(args, use_autoflex=False):
+    from src.flexgen import config as flex_config
     framework_name = "AutoFlex" if use_autoflex else "FlexGen"
-    setup_logging()
+    setup_logging(log_file=args.log_file)
     logger = logging.getLogger(__name__)
     logger.info(f"--- Starting Execution ({framework_name}) ---")
 
     runner = FlexRunner(
         model_name=args.model,
         use_autoflex=use_autoflex,
-        args=args,
-        offload_dir=os.path.expanduser(args.offload_dir),
-        cache_dir=os.path.expanduser(args.path)
+        common_args=args,
+        path=flex_config.PATH,
+        offload_dir=args.offload_dir
     )
     
     prompt = generate_prompt(args.input_len)
@@ -101,7 +108,6 @@ def run_flex_mode(args, use_autoflex=False):
     )
     return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 
-
 def run_benchmark_mode(args):
     print("--- Starting Benchmark Mode ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
@@ -117,8 +123,8 @@ def run_benchmark_mode(args):
     cleanup_mem()
     time.sleep(2)
 
-    # 2. FlexGen (All-GPU)
-    print("--- Benchmarking FlexGen (All-GPU) ---")
+    # 2. FlexGen
+    print("--- Benchmarking FlexGen ---")
     flexgen_results = run_flex_mode(args, use_autoflex=False)
     if flexgen_results:
         results.append(flexgen_results)
@@ -132,6 +138,7 @@ def run_benchmark_mode(args):
     if autoflex_results:
         results.append(autoflex_results)
 
+    # --- Print Summary ---
     print("--- Benchmark Summary ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     print("| Framework         | Throughput (tokens/s) | Model Load Time (s) |")
@@ -146,28 +153,22 @@ def run_benchmark_mode(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run accelerate or benchmark for LLMs.")
+    parser = argparse.ArgumentParser(description="Run LLM inference and benchmark with multiple frameworks.")
     
-    # Common arguments
-    parser.add_argument("--mode", type=str, default="accelerate", choices=["accelerate", "flexgen", "autoflex", "benchmark"], help="Execution mode.")
-    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
-    parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
-    parser.add_argument("--batch-size", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
-    parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
-    
-    # FlexGen/AutoFlex specific arguments
-    parser.add_argument("--path", type=str, default="/mnt/ssd/flexgen_cache", help="Path to model weights cache for FlexGen.")
-    parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/flexgen_offload", help="Offloading directory for FlexGen.")
-    parser.add_argument("--pin-weight", type=lambda x: (str(x).lower() == 'true'), default=True, help="Use pinned memory for weights in FlexGen/AutoFlex modes. Set to False to increase RAM offload capacity.")
-
-    # AutoFlex specific arguments
-    parser.add_argument("--force-rerun-profiler", action="store_true", help="Force re-running the hardware profiler for autoflex mode.")
+    # --- Common Arguments ---
+    parser.add_argument("--mode", type=str, default="accelerate", choices=['accelerate', 'flexgen', 'autoflex', 'benchmark'], help="The execution mode.")
+    parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="The Hugging Face model to use.")
+    parser.add_argument("--input-len", type=int, default=128, help="The length of the input prompt in tokens.")
+    parser.add_argument("--gen-len", type=int, default=32, help="The number of tokens to generate.")
+    parser.add_argument("--batch-size", type=int, default=1, help="The number of prompts to process in a batch.")
+    parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/offload_dir", help="The common directory for offloading tensors to disk.")
+    parser.add_argument("--log-file", type=str, default="log.log", help="Path to the log file.")
 
     args = parser.parse_args()
 
     if args.mode == 'accelerate':
         run_accelerate_mode(args)
-    elif args.mode in ['flexgen', 'flexllmgen']:
+    elif args.mode == 'flexgen':
         run_flex_mode(args, use_autoflex=False)
     elif args.mode == 'autoflex':
         run_flex_mode(args, use_autoflex=True)
