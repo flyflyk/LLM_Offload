@@ -69,6 +69,11 @@ def run_flex_mode(args, use_autoflex=False):
     prompts = [prompt] * args.batch_size
 
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
+
+    # Get policy and allocation info
+    policy_info = runner.get_policy_info()
+    allocation_info = runner.get_model_info()
+
     runner.cleanup()
 
     total_tokens = args.batch_size * args.gen_len
@@ -79,7 +84,9 @@ def run_flex_mode(args, use_autoflex=False):
         throughput=throughput,
         infer_time=result["inference_time"],
         model_load_time=result["load_time"],
-        model_name=args.model
+        model_name=args.model,
+        flex_policy_info=policy_info,
+        flex_allocation_info=allocation_info
     )
     return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 

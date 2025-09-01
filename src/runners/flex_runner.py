@@ -51,9 +51,22 @@ class FlexRunner:
 
         end_time = time.time()
         self.model_load_time = end_time - start_time
-        self.log_model_info()
+        
+        # Log model info upon initialization
+        initial_model_info = self.get_model_info()
+        logger.info("--- [FlexGen] Layer-to-Device Map ---")
+        logger.info(json.dumps(initial_model_info['device_map'], indent=4))
+        logger.info("-------------------------------------")
+        if initial_model_info['device_sizes']:
+             logger.info(f"[FlexGen] Memory Distribution Summary (GB): {initial_model_info['device_sizes']}")
 
-    def log_model_info(self):
+    def get_policy_info(self):
+        return {
+            "Weights (GPU/CPU/Disk) %": f"{self.policy.w_gpu_percent:.1f} / {self.policy.w_cpu_percent:.1f} / {(100 - self.policy.w_gpu_percent - self.policy.w_cpu_percent):.1f}",
+            "KV Cache (GPU/CPU/Disk) %": f"{self.policy.cache_gpu_percent:.1f} / {self.policy.cache_cpu_percent:.1f} / {(100 - self.policy.cache_gpu_percent - self.policy.cache_cpu_percent):.1f}",
+        }
+
+    def get_model_info(self):
         device_map = {}
         for i, layer in enumerate(self.model.layers):
             all_devices = []
@@ -63,7 +76,7 @@ class FlexRunner:
                     items = [items]
 
                 for item in items:
-                    if hasattr(item, 'device'): # It's a tensor-like object
+                    if hasattr(item, 'device'):
                         all_devices.append(item.device.name)
                     elif isinstance(item, ValueHolder):
                         get_devices(item)
@@ -93,14 +106,13 @@ class FlexRunner:
                     layer_key = f"layer.{i}"
 
             device_map[layer_key] = device_str
-        logger.info(f"--- [FlexGen] Layer-to-Device Map ---")
-        formatted_map = json.dumps(device_map, indent=4)
-        logger.info(formatted_map)
-        logger.info(f"-------------------------------------")
         
         device_sizes = calc_mem_per_device(self.model)
-        if device_sizes:
-            logger.info(f"[FlexGen] Memory Distribution Summary (GB): {device_sizes}")
+        
+        return {
+            "device_map": device_map,
+            "device_sizes": device_sizes
+        }
 
     def run(self, prompts: List[str], input_len: int, max_new_tokens: int) -> dict:
         if not prompts or not all(prompts):
