@@ -1,1 +1,0 @@
-FORCE_RERUN_PROFILER = False

@@ -1,0 +1,11 @@
+path: "/mnt/ssd/offload_dir"
+pin_weight: True
+
+w_gpu_percent: 100
+w_cpu_percent: 0
+
+cache_gpu_percent: 100
+cache_cpu_percent: 0
+
+act_gpu_percent: 100
+act_cpu_percent: 0

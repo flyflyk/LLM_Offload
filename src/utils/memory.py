@@ -1,8 +1,9 @@
 import torch
 import psutil
 import numpy as np
-from src.accelerate import config
+from types import SimpleNamespace
 from flexllmgen.flex_opt import ValueHolder
+
 
 def calc_mem_per_device(model) -> dict:
     """
@@ -60,23 +61,20 @@ def calc_mem_per_device(model) -> dict:
         
     return device_sizes
 
-def get_device_limit():
+def get_device_limit(config: SimpleNamespace) -> dict:
     max_memory = {}
     # VRAM
     if torch.cuda.is_available():
         total_vram_bytes = torch.cuda.get_device_properties(0).total_memory
-        # Leave a small buffer for OS and other processes
-        gpu_mem_gb = int((total_vram_bytes / (1024**3)) - 1)
-        max_memory[torch.cuda.current_device()] = f"{gpu_mem_gb}GB"
+        vram = int((total_vram_bytes / (1024**3)) - 1)
+        max_memory[torch.cuda.current_device()] = f"{vram}GB"
 
     # RAM
-    cpu_mem_config_gb = getattr(config, 'MAX_CPU_OFFLOAD', 0)
     max_ram = 0
-    if cpu_mem_config_gb == -1:  # Auto-detect available RAM
-        available_ram_bytes = psutil.virtual_memory().available
-        max_ram = int((available_ram_bytes / (1024**3)) * 0.95)
-    elif cpu_mem_config_gb > 0:  # Use specified RAM limit
-        max_ram = cpu_mem_config_gb
+    if config.max_cpu_offload <= -1:  # Auto-detect available RAM
+        max_ram = int(psutil.virtual_memory().total / (1024**3) * 0.95)
+    else:
+        max_ram = min(config.max_cpu_offload, int(psutil.virtual_memory().total / (1024**3) * 0.95))
     max_memory["cpu"] = f"{max_ram}GB"
 
     return max_memory

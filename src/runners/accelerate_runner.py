@@ -12,11 +12,7 @@ class AccelerateRunner:
     def __init__(self, model_name: str, config: object, device_map: dict, offload_folder: str, p_type: torch.dtype = torch.float16):
         self.model_name = model_name
         self.config = config
-        self.p_type = p_type
-        self.device_map = device_map
-        self.use_offload = getattr(config, 'ENABLE_OFFLOAD', False)
         self.accelerator = None
-        self.streamer = None
         self.model_load_time = 0
 
         start_time = time.time()
@@ -25,12 +21,12 @@ class AccelerateRunner:
         self.tokenizer.pad_token = self.tokenizer.eos_token if self.tokenizer.pad_token is None else self.tokenizer.pad_token
         
         model_kwargs = {
-            "torch_dtype": self.p_type,
-            "device_map": self.device_map,
+            "torch_dtype": p_type,
+            "device_map": device_map,
             "offload_folder": offload_folder
         }
         self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
-        if self.use_offload:
+        if config.enable_offload:
             self.accelerator = Accelerator()
             self.device = self.accelerator.device
             self.model = self.accelerator.prepare(self.model)
@@ -44,9 +40,6 @@ class AccelerateRunner:
         logger.info(f"Model weights size per device (GB): {device_sizes}")
 
     def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:
-        if not prompts or not all(prompts):
-            raise ValueError("Prompt list cannot be empty or contain empty prompts.")
-
         target_device = self.model.device
         inputs = self.tokenizer(
             prompts,
@@ -63,7 +56,7 @@ class AccelerateRunner:
             "top_k": 50,
         }
         
-        if self.config.ENABLE_KV_OFFLOAD:
+        if self.config.enable_kv_offload:
             generation_kwargs["cache_implementation"] = "offloaded"
 
         start_time = time.time()

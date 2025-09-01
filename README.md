@@ -43,7 +43,7 @@
 將所有設定標準化為一條簡單的規則：
 
 1.  **通用參數**：適用於所有模式的參數（如模型名稱、批次大小），統一透過**命令列參數**來設定。
-2.  **模式專屬參數**：僅適用於特定推理模式的參數，則在該模式對應的 **`config.py` 設定檔**中進行配置。
+2.  **模式專屬參數**：僅適用於特定推理模式的參數，則在 `src/configs/` 目錄下，對應的 **`<mode_name>.yaml` 設定檔**中進行配置。
 
 ---
 
@@ -57,9 +57,9 @@
 
 *   `--mode`: 執行模式。可選：`accelerate`, `flexgen`, `autoflex`, `benchmark`。(預設: `accelerate`)
 *   `--model`: 要使用的 Hugging Face 模型。 (預設: `facebook/opt-1.3b`)
-*   `--input-len`: 輸入提示的 Token 長度。(預設: `128`)
-*   `--gen-len`: 要生成的 Token 數量。(預設: `32`)
-*   `--batch-size`: 一次處理的提示數量（批次大小）。(預設: `1`)
+*   `--input-len`: 輸入提示的 Token 長度。(預設: `50`)
+*   `--gen-len`: 要生成的 Token 數量。(預設: `20`)
+*   `--batch-size`: 一次處理的提示數量（批次大小）。(預設: `2`)
 *   `--offload-dir`: 用於將張量（tensors）卸載到硬碟的通用目錄。(預設: `/mnt/ssd/offload_dir`)
 *   `--log-file`: 日誌檔案的儲存路徑。(預設: `log.log`)
 
@@ -73,10 +73,13 @@
 python main.py --mode accelerate --model [MODEL_NAME] [其他參數]
 ```
 
-**模式專屬設定 (`src/accelerate/config.py`):**
+**模式專屬設定 (`src/configs/accelerate.yaml`):**
 
-*   `ENABLE_OFFLOAD` (bool): 將權重卸載至 `--offload-dir` 指定目錄。
-*   `ENABLE_KV_OFFLOAD` (bool): 將 KV 快取卸載至 CPU RAM。
+```yaml
+enable_offload: true # 是否啟用權重卸載
+enable_kv_offload: true # 是否啟用 KV 快取卸載
+max_cpu_offload: -1 # 最大卸載到 RAM 的權重大小(-1: 代表無限制)
+```
 
 **範例:**
 
@@ -95,22 +98,29 @@ python main.py --mode accelerate --model facebook/opt-6.7b --batch-size 8
 python main.py --mode flexgen --model [MODEL_NAME] [其他參數]
 ```
 
-**模式專屬設定 (`src/flexgen/config.py`):**
+**模式專屬設定 (`src/configs/flexgen.yaml`):**
 
-*   `PATH` (str): 用於儲存 `FlexGen` 下載和轉換後的模型權重的目錄。
-*   `PIN_WEIGHT` (bool): 是否使用鎖頁記憶體（Pinned Memory），停用此選項可以卸載更大的模型到 RAM，但可能會犧牲一點效能。
-*   `W_GPU_PERCENT`, `W_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的權重百分比。
-*   `CACHE_GPU_PERCENT`, `CACHE_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的 KV 快取百分比。
-*   `ACT_GPU_PERCENT`, `ACT_CPU_PERCENT` (int): 分別設定要放置在 GPU 和 CPU 上的激活值百分比。
+```yaml
+path: "/mnt/ssd/offload_dir" # 用於儲存 FlexGen 下載和轉換後的模型權重的目錄
+pin_weight: True # 是否使用鎖頁記憶體
+
+# 權重卸載比例
+w_gpu_percent: 100
+w_cpu_percent: 0
+
+# KV Cache 卸載比例
+cache_gpu_percent: 100
+cache_cpu_percent: 0
+
+# Activations 卸載比例
+act_gpu_percent: 100
+act_cpu_percent: 0
+```
 
 **範例:**
 
 ```bash
-# 如要執行一個大型模型並將大部分權重放在 CPU，請先編輯 src/flexgen/config.py:
-# W_GPU_PERCENT = 10
-# W_CPU_PERCENT = 90
-# PIN_WEIGHT = False
-
+# 執行一個大型模型
 python main.py --mode flexgen --model facebook/opt-30b
 ```
 
@@ -124,9 +134,11 @@ python main.py --mode flexgen --model facebook/opt-30b
 python main.py --mode autoflex --model [MODEL_NAME] [其他參數]
 ```
 
-**模式專屬設定 (`src/autoflex/config.py`):**
+**模式專屬設定 (`src/configs/autoflex.yaml`):**
 
-*   `FORCE_RERUN_PROFILER` (bool): 若設為 `True`，將強制重新執行硬體分析，即使已存在分析快取。
+```yaml
+force_rerun_profiler: False # 是否強制重新硬體分析，即便已存在分析快取
+```
 
 **範例:**
 

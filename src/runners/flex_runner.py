@@ -8,6 +8,7 @@ import json
 from collections import Counter
 from typing import List
 from transformers import AutoTokenizer
+from types import SimpleNamespace
 
 from flexllmgen.flex_opt import Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
 from src.custom_flex.custom_flex_opt import CustomOptLM
@@ -27,10 +28,11 @@ from flexllmgen.flex_opt import Policy, CompressionConfig
 logger = logging.getLogger(__name__)
 
 class FlexRunner:
-    def __init__(self, model_name: str, use_autoflex: bool, common_args: argparse.Namespace, path: str, offload_dir: str, device: str = "cuda:0"):
+    def __init__(self, model_name: str, use_autoflex: bool, common_args: argparse.Namespace, config: SimpleNamespace, force_rerun: bool = False):
         self.model_name = model_name
         self.policy = self.create_policy(common_args, use_autoflex)
-        self.device = TorchDevice(device)
+        self.config = config
+        self.force_rerun = force_rerun
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
         self.model = None
         self.env = None
@@ -40,12 +42,12 @@ class FlexRunner:
 
         start_time = time.time()
 
-        cache_dir = os.path.expanduser(path)
-        offload_dir = os.path.expanduser(offload_dir)
+        cache_dir = os.path.expanduser(config.path)
+        offload_dir = os.path.expanduser(common_args.offload_dir)
         os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(offload_dir, exist_ok=True)
         
-        gpu = self.device
+        gpu = TorchDevice("cuda:0")
         cpu = TorchDevice("cpu")
         disk = TorchDisk(offload_dir, num_copy_threads=1)
         self.env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
@@ -161,9 +163,8 @@ class FlexRunner:
     def create_policy(self, common_args: argparse.Namespace, use_autoflex: bool):
         policy = None
         if use_autoflex:
-            from src.autoflex import config as autoflex_config
             logger.info("Finding optimal policy for AutoFlex...")
-            hardware_profile = get_hardware_profile(force_rerun=autoflex_config.FORCE_RERUN_PROFILER)
+            hardware_profile = get_hardware_profile(force_rerun=self.force_rerun)
             cost_model = CostModel(hardware_profile)
             model_info = get_model_info(common_args.model, common_args.batch_size)
             policy = find_best_policy(cost_model, model_info, common_args.input_len, common_args.gen_len, common_args.batch_size)
@@ -172,29 +173,27 @@ class FlexRunner:
                 return None
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
-            from src.flexgen import config as flex_config
-            
             # Validate policy percentages
-            if flex_config.W_GPU_PERCENT + flex_config.W_CPU_PERCENT > 100:
+            if self.config.W_GPU_PERCENT + self.config.W_CPU_PERCENT > 100:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
-            if flex_config.CACHE_GPU_PERCENT + flex_config.CACHE_CPU_PERCENT > 100:
+            if self.config.CACHE_GPU_PERCENT + self.config.CACHE_CPU_PERCENT > 100:
                 raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
 
             logger.info(f"Using policy from config: "
-                        f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
-                        f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}, "
-                        f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}, "
-                        f"Pinned-Memory-for-Weights: {flex_config.PIN_WEIGHT}")
+                        f"Weights(GPU/CPU): {self.config.W_GPU_PERCENT}/{self.config.W_CPU_PERCENT}, "
+                        f"KV Cache(GPU/CPU): {self.config.CACHE_GPU_PERCENT}/{self.config.CACHE_CPU_PERCENT}, "
+                        f"Activations(GPU/CPU): {self.config.ACT_GPU_PERCENT}/{self.config.ACT_CPU_PERCENT}, "
+                        f"Pinned-Memory-for-Weights: {self.config.PIN_WEIGHT}")
 
             policy = Policy(
                 gpu_batch_size=common_args.batch_size, num_gpu_batches=1,
-                w_gpu_percent=flex_config.W_GPU_PERCENT,
-                w_cpu_percent=flex_config.W_CPU_PERCENT,
-                cache_gpu_percent=flex_config.CACHE_GPU_PERCENT,
-                cache_cpu_percent=flex_config.CACHE_CPU_PERCENT,
-                act_gpu_percent=flex_config.ACT_GPU_PERCENT,
-                act_cpu_percent=flex_config.ACT_CPU_PERCENT,
-                overlap=True, sep_layer=True, pin_weight=flex_config.PIN_WEIGHT,
+                w_gpu_percent=self.config.W_GPU_PERCENT,
+                w_cpu_percent=self.config.W_CPU_PERCENT,
+                cache_gpu_percent=self.config.CACHE_GPU_PERCENT,
+                cache_cpu_percent=self.config.CACHE_CPU_PERCENT,
+                act_gpu_percent=self.config.ACT_GPU_PERCENT,
+                act_cpu_percent=self.config.ACT_CPU_PERCENT,
+                overlap=True, sep_layer=True, pin_weight=self.config.PIN_WEIGHT,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
                 compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
@@ -311,28 +310,26 @@ class FlexRunner:
                 return None
             logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
         else:
-            from src.flexgen import config as flex_config
-            
             # Validate policy percentages
-            if flex_config.W_GPU_PERCENT + flex_config.W_CPU_PERCENT > 100:
+            if self.config.W_GPU_PERCENT + self.config.W_CPU_PERCENT > 100:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
-            if flex_config.CACHE_GPU_PERCENT + flex_config.CACHE_CPU_PERCENT > 100:
+            if self.config.CACHE_GPU_PERCENT + self.config.CACHE_CPU_PERCENT > 100:
                 raise ValueError("Cache GPU and CPU percentages cannot sum to more than 100.")
 
             logger.info(f"Using policy from config: "
-                        f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
-                        f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}, "
-                        f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}, "
+                        f"Weights(GPU/CPU): {self.config.W_GPU_PERCENT}/{self.config.W_CPU_PERCENT}, "
+                        f"KV Cache(GPU/CPU): {self.config.CACHE_GPU_PERCENT}/{self.config.CACHE_CPU_PERCENT}, "
+                        f"Activations(GPU/CPU): {self.config.ACT_GPU_PERCENT}/{self.config.ACT_CPU_PERCENT}, "
                         f"Pinned-Memory-for-Weights: {args.pin_weight}")
 
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
-                w_gpu_percent=flex_config.W_GPU_PERCENT,
-                w_cpu_percent=flex_config.W_CPU_PERCENT,
-                cache_gpu_percent=flex_config.CACHE_GPU_PERCENT,
-                cache_cpu_percent=flex_config.CACHE_CPU_PERCENT,
-                act_gpu_percent=flex_config.ACT_GPU_PERCENT,
-                act_cpu_percent=flex_config.ACT_CPU_PERCENT,
+                w_gpu_percent=self.config.W_GPU_PERCENT,
+                w_cpu_percent=self.config.W_CPU_PERCENT,
+                cache_gpu_percent=self.config.CACHE_GPU_PERCENT,
+                cache_cpu_percent=self.config.CACHE_CPU_PERCENT,
+                act_gpu_percent=self.config.ACT_GPU_PERCENT,
+                act_cpu_percent=self.config.ACT_CPU_PERCENT,
                 overlap=True, sep_layer=True, pin_weight=args.pin_weight,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),

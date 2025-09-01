@@ -3,6 +3,8 @@ import time
 import torch
 import sys
 import logging
+import yaml
+from types import SimpleNamespace
 
 from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
@@ -14,8 +16,14 @@ from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
 from flexllmgen.opt_config import get_opt_config
 
-def run_accelerate_mode(args):
-    from src.accelerate import config as accelerate_config
+def load_config(mode) -> SimpleNamespace:
+    config_path = f"src/configs/{mode}.yaml"
+    with open(config_path, 'r') as f:
+        config_dict = yaml.safe_load(f)
+        return SimpleNamespace(**config_dict)
+
+def run_accelerate_mode(args) -> dict:
+    config = load_config("accelerate")
     setup_logging(log_file=args.log_file)
     logger = logging.getLogger(__name__)
     p_type = torch.float16
@@ -27,20 +35,17 @@ def run_accelerate_mode(args):
     
     # Generate device map
     meta_model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=p_type, device_map="meta")
-    max_memory = get_device_limit()
+    max_memory = get_device_limit(config)
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
     logger.info(f"Inferred device map: {device_map}")
     del meta_model
     cleanup_mem()
 
-    offload_mode = "Offload" if accelerate_config.ENABLE_OFFLOAD else "Default"
-    kv_offload_mode = " + KV Offload" if accelerate_config.ENABLE_KV_OFFLOAD else ""
-    current_mode = f"{offload_mode}{kv_offload_mode}"
-    logger.info(f"--- Starting Execution (Accelerate - {current_mode}) ---")
+    logger.info(f"--- Starting Execution ---")
 
     runner = AccelerateRunner(
         model_name=args.model, 
-        config=accelerate_config, 
+        config=config, 
         device_map=device_map, 
         offload_folder=args.offload_dir,
         p_type=p_type
@@ -67,8 +72,8 @@ def run_accelerate_mode(args):
     )
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
-def run_flex_mode(args, use_autoflex=False):
-    from src.flexgen import config as flex_config
+def run_flex_mode(args, use_autoflex=False) -> dict:
+    config = load_config("flexgen")
     framework_name = "AutoFlex" if use_autoflex else "FlexGen"
     setup_logging(log_file=args.log_file)
     logger = logging.getLogger(__name__)
@@ -78,8 +83,8 @@ def run_flex_mode(args, use_autoflex=False):
         model_name=args.model,
         use_autoflex=use_autoflex,
         common_args=args,
-        path=flex_config.PATH,
-        offload_dir=args.offload_dir
+        config = config,
+        force_rerun = load_config("autoflex").force_rerun_profiler if use_autoflex else False,
     )
     
     prompt = generate_prompt(args.input_len)
@@ -107,7 +112,7 @@ def run_flex_mode(args, use_autoflex=False):
     )
     return {"framework": framework_name, "throughput": throughput, "load_time": result['load_time']}
 
-def run_benchmark_mode(args):
+def run_benchmark_mode(args) -> None:
     print("--- Starting Benchmark Mode ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     
@@ -116,26 +121,21 @@ def run_benchmark_mode(args):
     # 1. Accelerate
     print("--- Benchmarking Accelerate ---")
     accelerate_results = run_accelerate_mode(args)
-    if accelerate_results:
-        results.append(accelerate_results)
-    
+    results.append(accelerate_results)
     cleanup_mem()
     time.sleep(2)
 
     # 2. FlexGen
     print("--- Benchmarking FlexGen ---")
     flexgen_results = run_flex_mode(args, use_autoflex=False)
-    if flexgen_results:
-        results.append(flexgen_results)
-
+    results.append(flexgen_results)
     cleanup_mem()
     time.sleep(2)
 
     # 3. AutoFlex
     print("--- Benchmarking AutoFlex ---")
     autoflex_results = run_flex_mode(args, use_autoflex=True)
-    if autoflex_results:
-        results.append(autoflex_results)
+    results.append(autoflex_results)
 
     # --- Print Summary ---
     print("--- Benchmark Summary ---")
@@ -157,9 +157,9 @@ if __name__ == "__main__":
     # --- Common Arguments ---
     parser.add_argument("--mode", type=str, default="accelerate", choices=['accelerate', 'flexgen', 'autoflex', 'benchmark'], help="The execution mode.")
     parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="The Hugging Face model to use.")
-    parser.add_argument("--input-len", type=int, default=128, help="The length of the input prompt in tokens.")
-    parser.add_argument("--gen-len", type=int, default=32, help="The number of tokens to generate.")
-    parser.add_argument("--batch-size", type=int, default=1, help="The number of prompts to process in a batch.")
+    parser.add_argument("--input-len", type=int, default=50, help="The length of the input prompt in tokens.")
+    parser.add_argument("--gen-len", type=int, default=20, help="The number of tokens to generate.")
+    parser.add_argument("--batch-size", type=int, default=2, help="The number of prompts to process in a batch.")
     parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/offload_dir", help="The common directory for offloading tensors to disk.")
     parser.add_argument("--log-file", type=str, default="log.log", help="Path to the log file.")
 
