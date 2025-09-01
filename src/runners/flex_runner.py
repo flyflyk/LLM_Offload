@@ -179,7 +179,8 @@ class FlexRunner:
             logger.info(f"Using policy from config: "
                         f"Weights(GPU/CPU): {flex_config.W_GPU_PERCENT}/{flex_config.W_CPU_PERCENT}, "
                         f"KV Cache(GPU/CPU): {flex_config.CACHE_GPU_PERCENT}/{flex_config.CACHE_CPU_PERCENT}, "
-                        f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}")
+                        f"Activations(GPU/CPU): {flex_config.ACT_GPU_PERCENT}/{flex_config.ACT_CPU_PERCENT}, "
+                        f"Pinned-Memory-for-Weights: {args.pin_weight}")
 
             policy = Policy(
                 gpu_batch_size=args.batch_size, num_gpu_batches=1,
@@ -189,7 +190,7 @@ class FlexRunner:
                 cache_cpu_percent=flex_config.CACHE_CPU_PERCENT,
                 act_gpu_percent=flex_config.ACT_GPU_PERCENT,
                 act_cpu_percent=flex_config.ACT_CPU_PERCENT,
-                overlap=True, sep_layer=True, pin_weight=True,
+                overlap=True, sep_layer=True, pin_weight=args.pin_weight,
                 cpu_cache_compute=False, attn_sparsity=1.0,
                 compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
                 compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),

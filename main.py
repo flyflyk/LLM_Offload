@@ -158,6 +158,7 @@ if __name__ == "__main__":
     # FlexGen/AutoFlex specific arguments
     parser.add_argument("--path", type=str, default="/mnt/ssd/flexgen_cache", help="Path to model weights cache for FlexGen.")
     parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/flexgen_offload", help="Offloading directory for FlexGen.")
+    parser.add_argument("--pin-weight", type=lambda x: (str(x).lower() == 'true'), default=True, help="Use pinned memory for weights in FlexGen/AutoFlex modes. Set to False to increase RAM offload capacity.")
 
     # AutoFlex specific arguments
     parser.add_argument("--force-rerun-profiler", action="store_true", help="Force re-running the hardware profiler for autoflex mode.")

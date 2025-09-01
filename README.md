@@ -35,9 +35,17 @@ pip install -e FlexLLMGen
 
 ## 使用方法
 
-此專案的核心是 `main.py` 腳本，它提供了四種不同的執行模式，透過 `--mode` 參數進行切換。
+此專案啟動腳本是 `main.py`，它提供了四種不同的執行模式，透過 `--mode` 參數進行切換。
 
 ---
+
+### 通用參數
+
+所有模式都能使用的參數:
+*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
+*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
+*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
+*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 
 ### 模式 1: `autoflex` - 自動化策略推理 (推薦)
 
@@ -51,12 +59,9 @@ python main.py --mode autoflex [OPTIONS]
 
 **[OPTIONS]:**
 
-*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
-*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 *   `--path`: FlexLLMGen 模型權重的儲存路徑 (預設: `~/flexllmgen_cache`)。
 *   `--offload-dir`: 權重卸載 (offload) 的暫存目錄 (預設: `~/flexllmgen_offload`)。
+*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
 *   `--force-rerun-profiler`: 強制重新執行硬體分析，即使已有快取檔案。
 
 **範例:**
@@ -77,13 +82,6 @@ python main.py --mode autoflex --model facebook/opt-2.7b --input-len 512 --gen-l
 ```bash
 python main.py --mode accelerate [OPTIONS]
 ```
-
-**[OPTIONS]:**
-
-*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--input-len`: 自動生成輸入提示的長度 (token 數) (預設: `8`)。
-*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 
 **`Accelerate/config.py` 設定:**
 
@@ -121,11 +119,8 @@ python main.py --mode flexgen [OPTIONS]
 
 **[OPTIONS]:**
 
-*   `--model`: 指定要使用的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
-*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
-*   `--batch-size`: 一次處理的提示數量 (批次大小) (預設: `1`)。
 *   `--log-file`: (可選) 將模型權重分佈的日誌儲存到指定檔案。
+*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
 
 **範例:**
 
@@ -158,11 +153,8 @@ python main.py --mode benchmark [OPTIONS]
 
 **[OPTIONS]:**
 
-*   `--model`: 指定要測試的 Hugging Face 模型 (預設: `facebook/opt-1.3b`)。
-*   `--batch-size`: 輸入的數量 (批次大小) (預設: `1`)。
-*   `--input-len`: 輸入提示的長度 (token 數) (預設: `8`)。
-*   `--gen-len`: 要生成的 token 數量 (預設: `32`)。
 *   `--log-file`: (可選) 將所有框架的模型權重分佈日誌儲存到指定檔案。
+*   `--pin-weight`: 是否啟用鎖頁記憶體 (預設: True)。
 *   `--force-rerun-profiler`: (可選) 在 AutoFlex 測試中，強制重新執行硬體分析。
 
 **範例:**
