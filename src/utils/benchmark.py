@@ -7,14 +7,13 @@ def log_metrics(framework: str, throughput: float, infer_time: float, model_load
     logger.info("--- Performance Metrics ---")
     logger.info(f"Model: {model_name}")
     logger.info(f"Framework: {framework}")
-    
+
     if flex_policy_info:
         logger.info("--- FlexGen Policy ---")
         for key, value in flex_policy_info.items():
             logger.info(f"{key}: {value}") 
     if flex_allocation_info:
-        logger.info("--- Allocation ---")
-        logger.info(f"Memory Distribution Summary (GB): {flex_allocation_info['device_sizes']}")      
+        logger.info(f"Actual Allocation: {flex_allocation_info['device_sizes']}")      
         logger.info(f"Cache Size (GB): {flex_allocation_info['cache_size_gb']:.3f}")
         logger.info(f"Hidden Size (GB): {flex_allocation_info['hidden_size_gb']:.3f}")
 
