@@ -9,7 +9,6 @@ def log_metrics(framework: str, throughput: float, infer_time: float, model_load
     logger.info(f"Framework: {framework}")
 
     if flex_policy_info:
-        logger.info("--- FlexGen Policy ---")
         for key, value in flex_policy_info.items():
             logger.info(f"{key}: {value}") 
     if flex_allocation_info:
