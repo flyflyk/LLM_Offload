@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 class FlexRunner:
     def __init__(self, model_name: str, use_autoflex: bool, common_args: argparse.Namespace, config: SimpleNamespace, force_rerun: bool = False):
         self.model_name = model_name
-        self.policy = self.create_policy(common_args, use_autoflex)
         self.config = config
+        self.policy = self.create_policy(common_args, use_autoflex)
         self.force_rerun = force_rerun
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
         self.model = None
