@@ -9,20 +9,15 @@ from FlexLLMGen.flexllmgen.flex_opt import (
 from FlexLLMGen.flexllmgen.pytorch_backend import (
     torch_dtype_to_np_dtype
 )
-from FlexLLMGen.flexllmgen.utils import ValueHolder
+from FlexLLMGen.flexllmgen.utils import ValueHolder, array_1d, array_3d
 
 def init_weight_list(weight_specs, policy, env):
     devices = [env.gpu, env.cpu, env.disk]
-    total_weight_size = sum(np.prod(spec[0]) * np.dtype(spec[1]).itemsize for spec in weight_specs)
     
-    dev_capacities = [
-        total_weight_size * (policy.w_gpu_percent / 100.0),
-        total_weight_size * (policy.w_cpu_percent / 100.0),
-        float('inf')
-    ]
-    
-    dev_used = [0, 0, 0]
-    
+    # Access the global state from the environment object
+    dev_capacities = env.dev_capacities
+    dev_used = env.dev_used
+
     ret = []
     for spec in weight_specs:
         shape, dtype, filename = spec
@@ -36,8 +31,7 @@ def init_weight_list(weight_specs, policy, env):
                 break
         
         if home is None:
-            # Fallback to disk if no space, though this shouldn't be hit with inf disk
-            home = env.disk
+            raise ValueError("Could not find a device with enough capacity for a weight.")
 
         if len(shape) < 2:
             pin_memory = True
@@ -67,71 +61,74 @@ def init_weight_list(weight_specs, policy, env):
     return ret
 
 class CustomInputEmbed(InputEmbed):
-    def init_weight(self, weight_home, path):
+    def get_weight_specs(self, path):
         v, h, s, dtype = (self.config.vocab_size, self.config.input_dim,
             self.config.max_seq_len, self.config.dtype)
         path = os.path.join(path, "")
-        weight_specs = [
+        return [
             ((v, h), dtype, path + "decoder.embed_tokens.weight"),
             ((s + 2, h), dtype, path + "decoder.embed_positions.weight"),
         ]
-        weights = init_weight_list(weight_specs, self.policy, self.env)
+
+    def init_weight(self, weight_home, path):
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
         weight_home.store(weights)
 
 class CustomOutputEmbed(OutputEmbed):
-    def init_weight(self, weight_home, path):
-        v, h, dtype = (self.config.vocab_size, self.config.input_dim,
-            self.config.dtype)
+    def get_weight_specs(self, path):
+        v, h, dtype = (self.config.vocab_size, self.config.input_dim, self.config.dtype)
         path = os.path.join(path, "")
-        weight_specs = [
+        return [
             ((h,), dtype, path + "decoder.layer_norm.weight"),
             ((h,), dtype, path + "decoder.layer_norm.bias"),
             ((v, h), dtype, path + "decoder.embed_tokens.weight"),
         ]
-        weights = init_weight_list(weight_specs, self.policy, self.env)
+
+    def init_weight(self, weight_home, path):
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
         weight_home.store(weights)
 
 class CustomSelfAttention(SelfAttention):
-    def init_weight(self, weight_home, path):
+    def get_weight_specs(self, path):
         h, dtype = (self.config.input_dim, self.config.dtype)
         path = os.path.join(os.path.join(path, f"decoder.layers.{self.layer_id}.self_attn"))
-        weight_specs = [
-            ((h, h), dtype, path + ".q_proj.weight"),
-            ((h,), dtype, path + ".q_proj.bias"),
-            ((h, h), dtype, path + ".k_proj.weight"),
-            ((h,), dtype, path + ".k_proj.bias"),
-            ((h, h), dtype, path + ".v_proj.weight"),
-            ((h,), dtype, path + ".v_proj.bias"),
-            ((h, h), dtype, path + ".out_proj.weight"),
-            ((h,), dtype, path + ".out_proj.bias"),
-            ((h,), dtype, path + "_layer_norm.weight"),
-            ((h,), dtype, path + "_layer_norm.bias"),
+        return [
+            ((h, h), dtype, path + ".q_proj.weight"), ((h,), dtype, path + ".q_proj.bias"),
+            ((h, h), dtype, path + ".k_proj.weight"), ((h,), dtype, path + ".k_proj.bias"),
+            ((h, h), dtype, path + ".v_proj.weight"), ((h,), dtype, path + ".v_proj.bias"),
+            ((h, h), dtype, path + ".out_proj.weight"), ((h,), dtype, path + ".out_proj.bias"),
+            ((h,), dtype, path + "_layer_norm.weight"), ((h,), dtype, path + "_layer_norm.bias"),
         ]
-        weights = init_weight_list(weight_specs, self.policy, self.env)
+
+    def init_weight(self, weight_home, path):
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
         weight_home.store(weights)
 
 class CustomMLP(MLP):
-    def init_weight(self, weight_home, path):
+    def get_weight_specs(self, path):
         h, dtype = (self.config.input_dim, self.config.dtype)
         path = os.path.join(os.path.join(path, f"decoder.layers.{self.layer_id}."))
-        weight_specs = [
-            ((4 * h, h), dtype, path + "fc1.weight"),
-            ((4 * h,), dtype, path + "fc1.bias"),
-            ((h, 4 * h), dtype, path + "fc2.weight"),
-            ((h,), dtype, path + "fc2.bias"),
-            ((h,), dtype, path + "final_layer_norm.weight"),
-            ((h,), dtype, path + "final_layer_norm.bias"),
+        return [
+            ((4 * h, h), dtype, path + "fc1.weight"), ((4 * h,), dtype, path + "fc1.bias"),
+            ((h, 4 * h), dtype, path + "fc2.weight"), ((h,), dtype, path + "fc2.bias"),
+            ((h,), dtype, path + "final_layer_norm.weight"), ((h,), dtype, path + "final_layer_norm.bias"),
         ]
-        weights = init_weight_list(weight_specs, self.policy, self.env)
+
+    def init_weight(self, weight_home, path):
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
         weight_home.store(weights)
 
 class CustomTransformerLayer(TransformerLayer):
     def __init__(self, config, env, policy, i):
-        # Override to use custom SelfAttention and MLP
         self.attention = CustomSelfAttention(config, env, policy, i)
         self.mlp = CustomMLP(config, env, policy, i)
         self.policy = policy
         self.compute = self.attention.compute
+
+    def get_weight_specs(self, path):
+        specs = self.attention.get_weight_specs(path)
+        specs.extend(self.mlp.get_weight_specs(path))
+        return specs
 
 class CustomOptLM(OptLM):
     def __init__(self, config, env, path, policy):
@@ -143,6 +140,7 @@ class CustomOptLM(OptLM):
         self.policy = policy
         self.num_gpu_batches = policy.num_gpu_batches
 
+        # Create layers first
         layers = []
         layers.append(CustomInputEmbed(self.config, self.env, self.policy))
         for i in range(self.config.num_hidden_layers):
@@ -154,6 +152,9 @@ class CustomOptLM(OptLM):
         layers.append(CustomOutputEmbed(self.config, self.env, self.policy))
         self.layers = layers
         self.num_layers = len(layers)
+
+        # Pre-calculate global capacities before initializing weights
+        self._pre_calc_capacity()
 
         if self.policy.act_gpu_percent == 100:
             self.act_home = self.env.gpu
@@ -177,3 +178,21 @@ class CustomOptLM(OptLM):
 
         self.task = None
         self.init_all_weights()
+
+    def _pre_calc_capacity(self):
+        expanded_path = os.path.abspath(os.path.expanduser(
+            os.path.join(self.path, f"{self.config.name}-np")))
+
+        all_weight_specs = []
+        for layer in self.layers:
+            all_weight_specs.extend(layer.get_weight_specs(expanded_path))
+
+        total_model_size_bytes = sum(np.prod(spec[0]) * np.dtype(spec[1]).itemsize for spec in all_weight_specs)
+
+        # Attach global state to the env object
+        self.env.dev_capacities = [
+            total_model_size_bytes * (self.policy.w_gpu_percent / 100.0),
+            total_model_size_bytes * (self.policy.w_cpu_percent / 100.0),
+            total_model_size_bytes * (self.policy.w_disk_percent / 100.0),
+        ]
+        self.env.dev_used = [0, 0, 0]
