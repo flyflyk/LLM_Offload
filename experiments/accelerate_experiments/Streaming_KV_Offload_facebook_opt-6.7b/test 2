@@ -1,12 +1,11 @@
 INFO - [__main__] - ln:34 - --- Starting Execution (Accelerate - Offload + KV Offload) ---
-Loading checkpoint shards: 100%|█████████████████████████████| 3/3 [00:01<00:00,  2.55it/s]
-WARNING - [accelerate.big_modeling] - ln:442 - Some parameters are on the meta device because they were offloaded to the cpu.
-INFO - [src.runners.accelerate_runner] - ln:44 - Model weights size per device (GB): {'cuda': '12.2202 GB', 'meta': '11.7212 GB'}
+Loading checkpoint shards: 100%|█████████████████████████████| 2/2 [00:01<00:00,  1.65it/s]
+INFO - [src.runners.accelerate_runner] - ln:44 - Model weights size per device (GB): {'cuda': '12.4024 GB'}
 Asking to truncate to max_length but no maximum length is provided and the model has no predefined maximum length. Default to no truncation.
 INFO - [src.utils.benchmark] - ln:7 - --- Performance Metrics ---
-INFO - [src.utils.benchmark] - ln:8 - Model: facebook/opt-13b
+INFO - [src.utils.benchmark] - ln:8 - Model: facebook/opt-6.7b
 INFO - [src.utils.benchmark] - ln:9 - Framework: Accelerate
-INFO - [src.utils.benchmark] - ln:10 - Model Load Time: 2.6193s
-INFO - [src.utils.benchmark] - ln:11 - Total Inference Time: 31.2101s
-INFO - [src.utils.benchmark] - ln:12 - Throughput: 1.03 tokens/sec
+INFO - [src.utils.benchmark] - ln:10 - Model Load Time: 2.5355s
+INFO - [src.utils.benchmark] - ln:11 - Total Inference Time: 0.8323s
+INFO - [src.utils.benchmark] - ln:12 - Throughput: 38.45 tokens/sec
 INFO - [src.utils.benchmark] - ln:13 - --- Execution Finished Successfully (Accelerate) ---
