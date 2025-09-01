@@ -204,7 +204,7 @@ class CustomOptLM(OptLM):
         self.dev_capacities = [
             total_model_size_bytes * (self.policy.w_gpu_percent / 100.0),
             total_model_size_bytes * (self.policy.w_cpu_percent / 100.0),
-            total_model_size_bytes * (self.policy.w_disk_percent / 100.0),
+            total_model_size_bytes * ((100 - (self.policy.w_gpu_percent + self.policy.w_cpu_percent)) / 100.0),
         ]
         # Use a single counter for total processed size for partitioning
         self.dev_used = [0]
