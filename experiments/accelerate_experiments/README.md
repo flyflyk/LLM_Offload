@@ -4,3 +4,14 @@
 全載入 2.7B、6.7B，
 offload 6.7B，
 KV 2.7B、6.7B、13B。
+
+實驗室設備系統資訊
+| 項目           | 規格與內容                                                              |
+| ------------ | ------------------------------------------------------------------ |
+| 作業系統    | Ubuntu 24.04.3 LTS (64-bit)                                        |
+| 核心版本     | Linux 6.14.0-28-generic                                            |
+| CPU      | AMD Ryzen 5 9600X（6 核心 12 執行緒）                         |
+| RAM      | 125 GB                                     |
+| GPU    | NVIDIA GeForce RTX 5070 Ti（16 GB VRAM）<br>驅動版本 575.64.03，CUDA 12.9 |
+| NVMe SSD | CT1000T500SSD8（1TB, PCIe Gen3 x4, NVMe）<br>韌體版本：P8CR004            |
+| 額外儲存裝置   | `sda`: 465.8 GB SSD（主系統碟）<br>`nvme0n1`: 931.5 GB      |
