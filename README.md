@@ -131,7 +131,7 @@ python main.py --mode autoflex --model facebook/opt-6.7b --input-len 512 --gen-l
 
 ### 模式四: `benchmark`
 
-執行基準測試，比較 `accelerate`、`flexgen`（使用全 GPU 策略）和 `autoflex` 的效能。
+執行基準測試，比較 `accelerate`、`flexgen` 、 `autoflex` 的效能。
 
 **範例:**
 
