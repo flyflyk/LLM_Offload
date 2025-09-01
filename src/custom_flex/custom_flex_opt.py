@@ -9,14 +9,14 @@ from FlexLLMGen.flexllmgen.flex_opt import (
 from FlexLLMGen.flexllmgen.pytorch_backend import (
     torch_dtype_to_np_dtype
 )
-from FlexLLMGen.flexllmgen.utils import ValueHolder, array_1d, array_3d
+from FlexLLMGen.flexllmgen.utils import ValueHolder
 
-def init_weight_list(weight_specs, policy, env):
+def init_weight_list(weight_specs, policy, env, model):
     devices = [env.gpu, env.cpu, env.disk]
     
-    # Access the global state from the environment object
-    dev_capacities = env.dev_capacities
-    dev_used = env.dev_used
+    # Access the global state from the model object
+    dev_capacities = model.dev_capacities
+    dev_used = model.dev_used
 
     ret = []
     for spec in weight_specs:
@@ -61,6 +61,10 @@ def init_weight_list(weight_specs, policy, env):
     return ret
 
 class CustomInputEmbed(InputEmbed):
+    def __init__(self, model, config, env, policy):
+        super().__init__(config, env, policy)
+        self.model = model
+
     def get_weight_specs(self, path):
         v, h, s, dtype = (self.config.vocab_size, self.config.input_dim,
             self.config.max_seq_len, self.config.dtype)
@@ -71,10 +75,14 @@ class CustomInputEmbed(InputEmbed):
         ]
 
     def init_weight(self, weight_home, path):
-        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env, self.model)
         weight_home.store(weights)
 
 class CustomOutputEmbed(OutputEmbed):
+    def __init__(self, model, config, env, policy):
+        super().__init__(config, env, policy)
+        self.model = model
+
     def get_weight_specs(self, path):
         v, h, dtype = (self.config.vocab_size, self.config.input_dim, self.config.dtype)
         path = os.path.join(path, "")
@@ -85,10 +93,14 @@ class CustomOutputEmbed(OutputEmbed):
         ]
 
     def init_weight(self, weight_home, path):
-        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env, self.model)
         weight_home.store(weights)
 
 class CustomSelfAttention(SelfAttention):
+    def __init__(self, model, config, env, policy, layer_id):
+        super().__init__(config, env, policy, layer_id)
+        self.model = model
+
     def get_weight_specs(self, path):
         h, dtype = (self.config.input_dim, self.config.dtype)
         path = os.path.join(os.path.join(path, f"decoder.layers.{self.layer_id}.self_attn"))
@@ -101,10 +113,14 @@ class CustomSelfAttention(SelfAttention):
         ]
 
     def init_weight(self, weight_home, path):
-        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env, self.model)
         weight_home.store(weights)
 
 class CustomMLP(MLP):
+    def __init__(self, model, config, env, policy, layer_id):
+        super().__init__(config, env, policy, layer_id)
+        self.model = model
+
     def get_weight_specs(self, path):
         h, dtype = (self.config.input_dim, self.config.dtype)
         path = os.path.join(os.path.join(path, f"decoder.layers.{self.layer_id}."))
@@ -115,15 +131,16 @@ class CustomMLP(MLP):
         ]
 
     def init_weight(self, weight_home, path):
-        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env)
+        weights = init_weight_list(self.get_weight_specs(path), self.policy, self.env, self.model)
         weight_home.store(weights)
 
 class CustomTransformerLayer(TransformerLayer):
-    def __init__(self, config, env, policy, i):
-        self.attention = CustomSelfAttention(config, env, policy, i)
-        self.mlp = CustomMLP(config, env, policy, i)
+    def __init__(self, model, config, env, policy, i):
+        self.attention = CustomSelfAttention(model, config, env, policy, i)
+        self.mlp = CustomMLP(model, config, env, policy, i)
         self.policy = policy
         self.compute = self.attention.compute
+        self.model = model
 
     def get_weight_specs(self, path):
         specs = self.attention.get_weight_specs(path)
@@ -140,20 +157,19 @@ class CustomOptLM(OptLM):
         self.policy = policy
         self.num_gpu_batches = policy.num_gpu_batches
 
-        # Create layers first
+        # Create layers, passing a reference to self (the model)
         layers = []
-        layers.append(CustomInputEmbed(self.config, self.env, self.policy))
+        layers.append(CustomInputEmbed(self, self.config, self.env, self.policy))
         for i in range(self.config.num_hidden_layers):
             if policy.sep_layer:
-                layers.append(CustomSelfAttention(self.config, self.env, self.policy, i))
-                layers.append(CustomMLP(self.config, self.env, self.policy, i))
+                layers.append(CustomSelfAttention(self, self.config, self.env, self.policy, i))
+                layers.append(CustomMLP(self, self.config, self.env, self.policy, i))
             else:
-                layers.append(CustomTransformerLayer(self.config, self.env, self.policy, i))
-        layers.append(CustomOutputEmbed(self.config, self.env, self.policy))
+                layers.append(CustomTransformerLayer(self, self.config, self.env, self.policy, i))
+        layers.append(CustomOutputEmbed(self, self.config, self.env, self.policy))
         self.layers = layers
         self.num_layers = len(layers)
 
-        # Pre-calculate global capacities before initializing weights
         self._pre_calc_capacity()
 
         if self.policy.act_gpu_percent == 100:
@@ -189,10 +205,10 @@ class CustomOptLM(OptLM):
 
         total_model_size_bytes = sum(np.prod(spec[0]) * np.dtype(spec[1]).itemsize for spec in all_weight_specs)
 
-        # Attach global state to the env object
-        self.env.dev_capacities = [
+        # Store global state on the model object itself
+        self.dev_capacities = [
             total_model_size_bytes * (self.policy.w_gpu_percent / 100.0),
             total_model_size_bytes * (self.policy.w_cpu_percent / 100.0),
             total_model_size_bytes * (self.policy.w_disk_percent / 100.0),
         ]
-        self.env.dev_used = [0, 0, 0]
+        self.dev_used = [0, 0, 0]
