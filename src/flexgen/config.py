@@ -1,8 +1,6 @@
-# FlexGen Configuration
-
 # --- Offloading Paths ---
 # Path to the model weights cache. This is where FlexGen stores downloaded and converted weights.
-PATH = "~/flexgen_cache"
+PATH = "/mnt/ssd/flexgen_cache"
 
 # --- Performance Settings ---
 # Use pinned memory for weights on CPU. Setting this to True can speed up CPU-GPU transfers,

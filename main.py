@@ -1,7 +1,6 @@
 import argparse
 import time
 import torch
-import os
 import sys
 import logging
 
