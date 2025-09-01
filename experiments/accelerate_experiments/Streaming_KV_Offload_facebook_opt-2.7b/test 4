@@ -1,0 +1,10 @@
+INFO - [__main__] - ln:34 - --- Starting Execution (Accelerate - Offload + KV Offload) ---
+INFO - [src.runners.accelerate_runner] - ln:44 - Model weights size per device (GB): {'cuda': '4.9390 GB'}
+Asking to truncate to max_length but no maximum length is provided and the model has no predefined maximum length. Default to no truncation.
+INFO - [src.utils.benchmark] - ln:7 - --- Performance Metrics ---
+INFO - [src.utils.benchmark] - ln:8 - Model: facebook/opt-2.7b
+INFO - [src.utils.benchmark] - ln:9 - Framework: Accelerate
+INFO - [src.utils.benchmark] - ln:10 - Model Load Time: 2.6479s
+INFO - [src.utils.benchmark] - ln:11 - Total Inference Time: 0.5139s
+INFO - [src.utils.benchmark] - ln:12 - Throughput: 62.26 tokens/sec
+INFO - [src.utils.benchmark] - ln:13 - --- Execution Finished Successfully (Accelerate) ---
