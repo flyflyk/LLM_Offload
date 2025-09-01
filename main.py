@@ -14,13 +14,19 @@ from src.utils.benchmark import log_metrics, cleanup_mem
 from accelerate import infer_auto_device_map
 from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
+from flexllmgen.opt_config import get_opt_config
 
 def run_accelerate_mode(args):
     setup_logging(log_file=getattr(config, 'LOG_FILE', None))
     logger = logging.getLogger(__name__)
     p_type = torch.float16
 
-    # --- Generate Device Map ---
+    # Get model info
+    opt_config = get_opt_config(args.model)
+    cache_size = opt_config.cache_bytes(args.batch_size, args.input_len + args.gen_len)
+    hidden_size = opt_config.hidden_bytes(args.batch_size, args.input_len + args.gen_len)
+    
+    # Generate device map
     meta_model = AutoModelForCausalLM.from_pretrained(args.model, torch_dtype=p_type, device_map="meta")
     max_memory = get_device_limit()
     device_map = infer_auto_device_map(meta_model, max_memory=max_memory, no_split_module_classes=meta_model._no_split_modules)
@@ -47,7 +53,12 @@ def run_accelerate_mode(args):
         throughput=throughput,
         infer_time=result["inference_time"],
         model_load_time=runner.model_load_time,
-        model_name=args.model
+        model_name=args.model,
+        flex_allocation_info={
+            "device_sizes": {},
+            "cache_size_gb": cache_size / (1024**3),
+            "hidden_size_gb": hidden_size / (1024**3),
+        }
     )
     return {"framework": "Accelerate", "throughput": throughput, "load_time": runner.model_load_time}
 
@@ -121,7 +132,6 @@ def run_benchmark_mode(args):
     if autoflex_results:
         results.append(autoflex_results)
 
-    # --- Print Summary ---
     print("--- Benchmark Summary ---")
     print(f"Model: {args.model}, Batch Size: {args.batch_size}, Input Len: {args.input_len}, Gen Len: {args.gen_len}")
     print("| Framework         | Throughput (tokens/s) | Model Load Time (s) |")
@@ -138,18 +148,18 @@ def run_benchmark_mode(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run accelerate or benchmark for LLMs.")
     
-    # --- Common Arguments ---
+    # Common arguments
     parser.add_argument("--mode", type=str, default="accelerate", choices=["accelerate", "flexgen", "autoflex", "benchmark"], help="Execution mode.")
     parser.add_argument("--model", type=str, default="facebook/opt-1.3b", help="Hugging Face model to use.")
     parser.add_argument("--gen-len", type=int, default=32, help="Number of tokens to generate.")
     parser.add_argument("--batch-size", type=int, default=1, help="Number of inputs to process in a batch (batch size).")
     parser.add_argument("--input-len", type=int, default=8, help="Length of the input prompt in tokens.")
     
-    # --- FlexGen/AutoFlex Specific Arguments ---
+    # FlexGen/AutoFlex specific arguments
     parser.add_argument("--path", type=str, default="/mnt/ssd/flexgen_cache", help="Path to model weights cache for FlexGen.")
     parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/flexgen_offload", help="Offloading directory for FlexGen.")
 
-    # --- AutoFlex Specific Arguments ---
+    # AutoFlex specific arguments
     parser.add_argument("--force-rerun-profiler", action="store_true", help="Force re-running the hardware profiler for autoflex mode.")
 
     args = parser.parse_args()

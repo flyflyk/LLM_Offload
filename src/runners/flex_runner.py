@@ -52,7 +52,7 @@ class FlexRunner:
         end_time = time.time()
         self.model_load_time = end_time - start_time
         
-        # Log model info upon initialization
+        # Log model info after init
         initial_model_info = self.get_model_info()
         logger.info("--- [FlexGen] Layer-to-Device Map ---")
         logger.info(json.dumps(initial_model_info['device_map'], indent=4))
@@ -108,14 +108,26 @@ class FlexRunner:
         
         device_sizes = calc_mem_per_device(self.model)
         
+        cache_size = 0
+        hidden_size = 0
+        if hasattr(self, 'input_len') and hasattr(self, 'gen_len'):
+            num_prompts = self.policy.gpu_batch_size * self.policy.num_gpu_batches
+            cache_size = self.model.config.cache_bytes(num_prompts, self.input_len + self.gen_len)
+            hidden_size = self.model.config.hidden_bytes(num_prompts, self.input_len + self.gen_len)
+
         return {
             "device_map": device_map,
-            "device_sizes": device_sizes
+            "device_sizes": device_sizes,
+            "cache_size_gb": cache_size / (1024**3),
+            "hidden_size_gb": hidden_size / (1024**3),
         }
 
     def run(self, prompts: List[str], input_len: int, max_new_tokens: int) -> dict:
         if not prompts or not all(prompts):
             raise ValueError("Prompt list cannot be empty or contain empty prompts.")
+        
+        self.input_len = input_len
+        self.gen_len = max_new_tokens
         
         logger.info(f"[FlexGen] Running inference on {len(prompts)} prompts (input_len: {input_len}, gen_len: {max_new_tokens}).")
 
