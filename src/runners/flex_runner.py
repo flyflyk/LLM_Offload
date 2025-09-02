@@ -10,7 +10,7 @@ from typing import List
 from transformers import AutoTokenizer
 from types import SimpleNamespace
 
-from flexllmgen.flex_opt import Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
+from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
 from src.custom_flex.custom_flex_opt import CustomOptLM
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
@@ -52,7 +52,12 @@ class FlexRunner:
         disk = TorchDisk(offload_dir, num_copy_threads=1)
         self.env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
-        self.model = CustomOptLM(self.model_name, self.env, cache_dir, self.policy)
+        if self.config.use_custom:
+            logger.info("Using custom FlexGen model...")
+            self.model = CustomOptLM(self.model_name, self.env, cache_dir, self.policy)
+        else:
+            logger.info("Using original FlexGen model...")
+            self.model = OptLM(self.model_name, self.env, cache_dir, self.policy)
 
         end_time = time.time()
         self.model_load_time = end_time - start_time

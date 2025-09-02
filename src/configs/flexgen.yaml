@@ -1,5 +1,6 @@
 cache_path: "/mnt/ssd/flexgen_cache"
 pin_weight: True
+use_custom: True
 
 w_gpu_percent: 100
 w_cpu_percent: 0
