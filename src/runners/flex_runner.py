@@ -49,7 +49,7 @@ class FlexRunner:
         
         gpu = TorchDevice("cuda:0")
         cpu = TorchDevice("cpu")
-        disk = TorchDisk(offload_dir, num_copy_threads=1)
+        disk = TorchDisk(offload_dir, num_copy_threads=self.config.num_copy_threads)
         self.env = ExecutionEnv(gpu=gpu, cpu=cpu, disk=disk, mixed=TorchMixedDevice([gpu, cpu, disk]))
 
         if self.config.use_custom:
