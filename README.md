@@ -93,6 +93,9 @@ cache_path: "/mnt/ssd/flexgen_cache" # 用於儲存 FlexGen 下載和轉換後�
 pin_weight: True # 是否使用鎖頁記憶體
 use_custom: False # 是否使用優化版的 FlexGen 引擎
 num_copy_threads: 1 # Disk I/O 的線程數量
+cpu_cache_compute: False # 是否將 Attention 計算委派給 CPU
+compress_cache: False # 是否壓縮 KV 快取
+compress_weight: False # 是否壓縮模型權重
 
 # 權重卸載比例
 w_gpu_percent: 100

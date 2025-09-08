@@ -199,9 +199,9 @@ class FlexRunner:
                 act_gpu_percent=self.config.act_gpu_percent,
                 act_cpu_percent=self.config.act_cpu_percent,
                 overlap=True, sep_layer=True, pin_weight=self.config.pin_weight,
-                cpu_cache_compute=False, attn_sparsity=1.0,
-                compress_weight=False, comp_weight_config=CompressionConfig(num_bits=16, group_size=256, group_dim=1, symmetric=False),
-                compress_cache=False, comp_cache_config=CompressionConfig(num_bits=16, group_size=256, group_dim=2, symmetric=False),
+                cpu_cache_compute=self.config.cpu_cache_compute, attn_sparsity=1.0,
+                compress_weight=self.config.compress_weight, comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
+                compress_cache=self.config.compress_cache, comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
             )
 
         return policy 
