@@ -10,6 +10,10 @@ from typing import List
 from transformers import AutoTokenizer
 from types import SimpleNamespace
 
+
+import src.custom_flex.custom_pytorch_backend as custom_pytorch_backend
+sys.modules['flexllmgen.pytorch_backend'] = custom_pytorch_backend
+
 from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
 from src.custom_flex.custom_flex_opt import CustomOptLM
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
