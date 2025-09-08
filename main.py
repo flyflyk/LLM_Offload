@@ -2,6 +2,10 @@ import argparse
 import time
 import torch
 import sys
+
+import src.custom_flex.custom_pytorch_backend as custom_pytorch_backend
+sys.modules['flexllmgen.pytorch_backend'] = custom_pytorch_backend
+
 import logging
 import yaml
 from types import SimpleNamespace
