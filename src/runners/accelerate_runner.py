@@ -68,6 +68,7 @@ class AccelerateRunner:
         start_time = time.time()
         with torch.no_grad():
             model_to_generate = self.accelerator.unwrap_model(self.model) if self.accelerator else self.model
+            inputs = inputs.to(model_to_generate.device)
             generation_output = model_to_generate.generate(
                 **inputs,
                 **generation_kwargs
