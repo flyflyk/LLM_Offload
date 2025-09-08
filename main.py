@@ -6,10 +6,6 @@ import logging
 import yaml
 from types import SimpleNamespace
 
-import src.custom_flex.custom_pytorch_backend as custom_pytorch_backend
-import src.custom_flex.custom_compression as custom_compression
-sys.modules['flexllmgen.pytorch_backend'] = custom_pytorch_backend
-sys.modules['flexllmgen.compression'] = custom_compression
 from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
