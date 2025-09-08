@@ -21,17 +21,25 @@ class AccelerateRunner:
         self.tokenizer.pad_token = self.tokenizer.eos_token if self.tokenizer.pad_token is None else self.tokenizer.pad_token
         
         model_kwargs = {
-            "torch_dtype": p_type,
             "device_map": device_map,
             "offload_folder": offload_folder
         }
-        self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
-        if config.enable_offload:
-            self.accelerator = Accelerator()
-            self.device = self.accelerator.device
-            self.model = self.accelerator.prepare(self.model)
+
+        if self.config.quantize_4bit:
+            logger.info("Loading model with 4-bit quantization...")
+            model_kwargs.update({
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_compute_dtype": torch.bfloat16 
+            })
         else:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model_kwargs["torch_dtype"] = p_type
+
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_name, **model_kwargs)
+
+        if config.enable_offload and not self.config.quantize_4bit:
+            self.accelerator = Accelerator()
+            self.model = self.accelerator.prepare(self.model)
         
         end_time = time.time()
         self.model_load_time = end_time - start_time
@@ -40,14 +48,12 @@ class AccelerateRunner:
         logger.info(f"Model weights size per device (GB): {device_sizes}")
 
     def run_accelerate(self, prompts: List[str], max_new_tokens: int = 50) -> dict:
-        target_device = self.model.device
         inputs = self.tokenizer(
             prompts,
             return_tensors='pt',
             padding=True,
             truncation=True,
-        ).to(target_device)
-
+        )
         generation_kwargs = {
             "max_new_tokens": max_new_tokens,
             "pad_token_id": self.tokenizer.pad_token_id,
@@ -61,7 +67,8 @@ class AccelerateRunner:
 
         start_time = time.time()
         with torch.no_grad():
-            generation_output = self.model.generate(
+            model_to_generate = self.accelerator.unwrap_model(self.model) if self.accelerator else self.model
+            generation_output = model_to_generate.generate(
                 **inputs,
                 **generation_kwargs
             )

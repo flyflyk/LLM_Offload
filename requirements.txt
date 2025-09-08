@@ -7,3 +7,4 @@ pulp
 attrs
 psutil
 PyYAML
+bitsandbytes

@@ -34,6 +34,9 @@
     # 安裝依賴套件
     pip install -r requirements.txt
     pip install -e FlexLLMGen
+
+    # (可選) 若要在 accelerate 模式下使用 4-bit 量化，請安裝 bitsandbytes
+    pip install bitsandbytes
     ```
 
 ---
@@ -73,6 +76,7 @@
 enable_offload: true # 是否啟用權重卸載
 enable_kv_offload: true # 是否啟用 KV 快取卸載
 max_cpu_offload: -1 # 最大卸載到 RAM 的權重大小(-1: 代表無限制)
+quantize_4bit: false # 是否啟用 4-bit 量化
 ```
 
 **範例:**
