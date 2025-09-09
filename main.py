@@ -50,7 +50,7 @@ def run_accelerate_mode(args) -> dict:
         offload_folder=args.offload_dir,
         p_type=p_type
     )
-    prompt_text = generate_prompt(args.input_len)
+    prompt_text = generate_prompt(args.input_len, runner.tokenizer)
     prompts = [prompt_text] * args.batch_size
 
     result = runner.run_accelerate(prompts, max_new_tokens=args.gen_len)
@@ -87,7 +87,7 @@ def run_flex_mode(args, use_autoflex=False) -> dict:
         force_rerun = load_config("autoflex").force_rerun_profiler if use_autoflex else False,
     )
     
-    prompt = generate_prompt(args.input_len)
+    prompt = generate_prompt(args.input_len, runner.tokenizer)
     prompts = [prompt] * args.batch_size
 
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
