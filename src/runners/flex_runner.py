@@ -162,15 +162,21 @@ class FlexRunner:
         if use_autoflex:
             logger.info("Finding optimal policy for AutoFlex...")
             hardware_profile = get_hardware_profile(force_rerun=self.force_rerun)
-            policy = get_optimial_policy(
+            policy, num_threads = get_optimial_policy(
                 model_name=common_args.model,
                 hardware_profile=hardware_profile,
                 input_len=common_args.input_len,
             )
+
+            if policy is None:
+                raise RuntimeError("Failed to find an optimal policy.")
+
+            self.config.num_copy_threads = num_threads
             logger.info(f"Optimal Policy Found: Batch Size: {policy.gpu_batch_size}, "
                         f"W: {policy.w_gpu_percent:.1f}% GPU / {policy.w_cpu_percent:.1f}% CPU, "
                         f"C: {policy.cache_gpu_percent:.1f}% GPU / {policy.cache_cpu_percent:.1f}% CPU, "
-                        f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU")
+                        f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU, "
+                        f"Num Copy Threads: {num_threads}")
         else:
             # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:

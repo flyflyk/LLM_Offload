@@ -17,6 +17,7 @@ def get_optimial_policy(
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
+    best_num_copy_threads = 4  # Default value
 
     # --- Iterate through batch sizes (multiples of 4) ---
     for batch_size in tqdm(
@@ -99,6 +100,7 @@ def get_optimial_policy(
                 # Auto-detect settings for the policy
                 physical_cores = psutil.cpu_count(logical=False)
                 num_copy_threads = max(1, min(physical_cores // 2, 4))
+                best_num_copy_threads = num_copy_threads
                 
                 model_name_lower = model_name.lower()
                 large_model_keywords = ["13b", "17.5b", "30b", "66b", "175b"]
@@ -116,7 +118,6 @@ def get_optimial_policy(
                     overlap=True,
                     sep_layer=True,
                     pin_weight=True,
-                    num_copy_threads=num_copy_threads,
                     cpu_cache_compute=False,
                     attn_sparsity=1.0,
                     compress_weight=is_large_model,
@@ -131,4 +132,4 @@ def get_optimial_policy(
     else:
         print("\nCould not find a feasible policy. The model may be too large for the available hardware.")
 
-    return best_policy
+    return best_policy, best_num_copy_threads
