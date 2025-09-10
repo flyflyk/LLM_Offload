@@ -87,8 +87,9 @@ def run_flex_mode(args, use_autoflex=False) -> dict:
         force_rerun = load_config("autoflex").force_rerun_profiler if use_autoflex else False,
     )
     
+    batch_size = runner.policy.gpu_batch_size
     prompt = generate_prompt(args.input_len, runner.tokenizer)
-    prompts = [prompt] * args.batch_size
+    prompts = [prompt] * batch_size
 
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
 
@@ -98,7 +99,7 @@ def run_flex_mode(args, use_autoflex=False) -> dict:
 
     runner.cleanup()
 
-    total_tokens = args.batch_size * args.gen_len
+    total_tokens = batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
 
     log_metrics(
