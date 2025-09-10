@@ -22,7 +22,7 @@ def get_optimial_policy(
     for batch_size in tqdm(
         range(4, max_batch_size + 1, 4), desc="Optimizing Batch Size"
     ):
-        model_info = get_model_info(model_name, batch_size)
+        model_info = get_model_info(model_name)
         config = model_info.config
         num_layers = config.num_hidden_layers
 
