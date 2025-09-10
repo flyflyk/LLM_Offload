@@ -165,7 +165,6 @@ class FlexRunner:
             policy, num_threads = get_optimial_policy(
                 model_name=common_args.model,
                 hardware_profile=hardware_profile,
-                input_len=common_args.input_len,
             )
 
             if policy is None:
