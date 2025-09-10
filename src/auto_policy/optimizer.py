@@ -9,7 +9,6 @@ from .profiler import HardwareProfile
 def get_optimial_policy(
     model_name: str,
     hardware_profile: HardwareProfile,
-    input_len: int,
     max_batch_size: int = 128,
 ) -> Policy:
     print("Searching for the optimal policy using Linear Programming...")
@@ -86,11 +85,7 @@ def get_optimial_policy(
         if pulp.LpStatus[prob.status] == "Optimal":
             min_transfer_time = pulp.value(prob.objective)
 
-            # Estimate compute time (simplified)
-            flops_per_token = 2 * total_weight_size / 2 + 2 * input_len * config.input_dim
-            compute_time = flops_per_token / (hardware_profile.peak_gpu_tflops * 1e12)
-
-            l_step = min_transfer_time + compute_time
+            l_step = min_transfer_time
             throughput = batch_size / l_step
 
             if throughput > max_throughput:
