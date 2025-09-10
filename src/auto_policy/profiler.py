@@ -2,13 +2,20 @@ import json
 import os
 import time
 import torch
+import psutil
+import dataclasses
 
-def _profile_bandwidth_mb_s(src_device: str, dst_device: str, size_mb: int = 128) -> float:
-    """
-    Measures the bandwidth between two torch devices in MB/s.
-    """
+@dataclasses.dataclass
+class HardwareProfile:
+    gpu_mem: int
+    cpu_mem: int
+    cpu_gpu_bandwidth: float
+    disk_cpu_bandwidth: float
+    peak_gpu_tflops: float
+
+def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> float:
     tensor = torch.randn(size_mb * 1024 * 1024 // 4, dtype=torch.float32, device=src_device)
-    # Warmup transfers to ensure accurate measurement.
+    # Warmup transfers
     for _ in range(3):
         tensor.to(dst_device)
     
@@ -22,20 +29,20 @@ def _profile_bandwidth_mb_s(src_device: str, dst_device: str, size_mb: int = 128
     end_time = time.time()
     
     duration = end_time - start_time
-    return size_mb / duration if duration > 0 else 0
+    return (size_mb * 1024 * 1024) / duration if duration > 0 else 0
 
-def _profile_compute_tflops(device: str, model_dim: int = 4096) -> float:
-    """
-    Measures the compute performance of a device in TFLOPS.
-    """
+def _profile_compute(device: str, model_dim: int = 4096) -> float:
+    if device == 'cpu' and model_dim > 2048:
+        model_dim = 2048 # Use a smaller matrix for CPU to avoid excessive profiling time
+
     N, K, M = model_dim, model_dim, model_dim
     a = torch.randn(N, K, device=device, dtype=torch.float16)
     b = torch.randn(K, M, device=device, dtype=torch.float16)
     
-    # Warmup computations.
+    # Warmup computations
     for _ in range(3):
         torch.matmul(a, b)
-        
+    
     if 'cuda' in device:
         torch.cuda.synchronize()
     
@@ -50,61 +57,46 @@ def _profile_compute_tflops(device: str, model_dim: int = 4096) -> float:
     tflops = (flops / duration) / 1e12 if duration > 0 else 0
     return tflops
 
-def get_hardware_profile(profile_path: str = "AutoPolicy/hardware_profile.json", force_rerun: bool = False) -> dict:
-    """
-    Gets hardware profile, from a cached file if available, otherwise runs profiling.
-    """
-    if not force_rerun and os.path.exists(profile_path):
-        print("Loading cached hardware profile...")
-        try:
-            with open(profile_path, 'r') as f:
-                # Check if file is empty before trying to load
-                if os.path.getsize(profile_path) > 0:
-                    return json.load(f)
-                else:
-                    print("Warning: Hardware profile cache file is empty. Re-running profiler.")
-        except json.JSONDecodeError:
-            print("Warning: Could not decode hardware profile cache. Re-running profiler.")
-        except Exception as e:
-            print(f"Warning: An unexpected error occurred while reading the cache file ({e}). Re-running profiler.")
+def get_hardware_profile(profile_path: str = "hardware_profile.json", force_rerun: bool = False) -> HardwareProfile:
+    cache_dir = os.path.dirname(profile_path)
+    if cache_dir and not os.path.exists(cache_dir):
+        os.makedirs(cache_dir)
+
+    if not force_rerun and os.path.exists(profile_path) and os.path.getsize(profile_path) > 0:
+        print(f"Loading cached hardware profile from {profile_path}...")
+        with open(profile_path, 'r') as f:
+            profile_dict = json.load(f)
+            return HardwareProfile(**profile_dict)
 
     print("Running hardware profiling... (This may take a moment)")
     
-    profile = {}
-    try:
-        if not torch.cuda.is_available():
-            raise RuntimeError("CUDA is not available for profiling.")
-            
-        profile = {
-            # Bandwidth in GB/s
-            "gpu_cpu_bandwidth": _profile_bandwidth_mb_s('cuda:0', 'cpu', 256) / 1024,
-            "cpu_gpu_bandwidth": _profile_bandwidth_mb_s('cpu', 'cuda:0', 256) / 1024,
-            # Simulate Disk bandwidth as 1/10th of CPU-CPU transfer for demonstration.
-            "disk_cpu_bandwidth": _profile_bandwidth_mb_s('cpu', 'cpu', 256) / 1024 * 0.1,
-            # Compute in TFLOPS (FP16)
-            "gpu_tflops": _profile_compute_tflops('cuda:0', model_dim=4096),
-            "cpu_tflops": _profile_compute_tflops('cpu', model_dim=1024),
-        }
-    except (RuntimeError, FileNotFoundError) as e:
-        # Fallback to placeholder values if profiling fails (e.g., no GPU).
-        print(f"Warning: Could not perform real profiling ({e}). Using default placeholder values.")
-        profile = {
-            "gpu_cpu_bandwidth": 12.0,  # GB/s
-            "cpu_gpu_bandwidth": 12.0,  # GB/s
-            "disk_cpu_bandwidth": 1.0,  # GB/s
-            "gpu_tflops": 150.0,        # TFLOPS (A100-like)
-            "cpu_tflops": 2.0,          # TFLOPS
-        }
+    # Profile memory
+    gpu_mem = torch.cuda.get_device_properties(0).total_memory
+    cpu_mem = psutil.virtual_memory().total
+
+    # Profile bandwidth (Bytes/s)
+    cpu_gpu_bw = _profile_bandwidth('cpu', 'cuda:0')
+    # Simulate disk bandwidth as a fraction of CPU memory bandwidth
+    disk_cpu_bw = _profile_bandwidth('cpu', 'cpu') * 0.1 
+
+    # Profile compute (TFLOPS)
+    gpu_tflops = _profile_compute('cuda:0')
+
+    profile = HardwareProfile(
+        gpu_mem=gpu_mem,
+        cpu_mem=cpu_mem,
+        cpu_gpu_bandwidth=cpu_gpu_bw,
+        disk_cpu_bandwidth=disk_cpu_bw,
+        peak_gpu_tflops=gpu_tflops,
+    )
 
     print("Profiling complete.")
-    # Cache the results.
     with open(profile_path, 'w') as f:
-        json.dump(profile, f, indent=4)
+        json.dump(dataclasses.asdict(profile), f, indent=4)
         
     return profile
 
 if __name__ == '__main__':
-    """Run profiler directly to generate a hardware profile cache."""
     profile = get_hardware_profile(force_rerun=True)
     print("Hardware Profile:")
-    print(json.dumps(profile, indent=4))
+    print(json.dumps(dataclasses.asdict(profile), indent=4))

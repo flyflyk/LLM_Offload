@@ -14,8 +14,7 @@ from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, O
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
 from src.auto_policy.profiler import get_hardware_profile
-from src.auto_policy.cost_model import CostModel, get_model_info
-from src.auto_policy.optimizer import find_best_policy
+from src.auto_policy.optimizer import get_optimial_policy
 from src.utils.memory import calc_mem_per_device     
 
 # Add the FlexLLMGen submodule to the Python path
@@ -163,13 +162,15 @@ class FlexRunner:
         if use_autoflex:
             logger.info("Finding optimal policy for AutoFlex...")
             hardware_profile = get_hardware_profile(force_rerun=self.force_rerun)
-            cost_model = CostModel(hardware_profile)
-            model_info = get_model_info(common_args.model, common_args.batch_size)
-            policy = find_best_policy(cost_model, model_info, common_args.input_len, common_args.gen_len, common_args.batch_size)
-            if not policy:
-                logger.error("Could not find an optimal policy for AutoFlex. Exiting.")
-                return None
-            logger.info(f"Optimal Policy Found: W: {policy.w_gpu_percent}/{policy.w_cpu_percent}, C: {policy.cache_gpu_percent}/{policy.cache_cpu_percent}")
+            policy = get_optimial_policy(
+                model_name=common_args.model,
+                hardware_profile=hardware_profile,
+                input_len=common_args.input_len,
+            )
+            logger.info(f"Optimal Policy Found: Batch Size: {policy.gpu_batch_size}, "
+                        f"W: {policy.w_gpu_percent:.1f}% GPU / {policy.w_cpu_percent:.1f}% CPU, "
+                        f"C: {policy.cache_gpu_percent:.1f}% GPU / {policy.cache_cpu_percent:.1f}% CPU, "
+                        f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU")
         else:
             # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
