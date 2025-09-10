@@ -31,7 +31,7 @@ def get_optimial_policy(
         total_hidden_state_size = batch_size * config.input_dim * 2  # FP16
         total_kv_cache_size = (
             batch_size * num_layers * config.n_head *
-            config.seq_len * (config.input_dim // config.n_head) * 2 * 2 # k/v, FP16
+            config.max_seq_len * (config.input_dim // config.n_head) * 2 * 2 # k/v, FP16
         )
 
         size_w = total_weight_size / num_layers
