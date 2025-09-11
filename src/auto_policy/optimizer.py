@@ -107,7 +107,6 @@ def get_optimial_policy(
                         compress_cache=compress_c,
                         comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
                     )
-                break
 
     if best_policy:
         print(f"\nFound best policy with a throughput of {max_throughput:.2f} tokens/sec "
