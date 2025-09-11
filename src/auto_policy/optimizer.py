@@ -14,7 +14,7 @@ def get_optimial_policy(
     hardware_profile: HardwareProfile,
     input_len: int,
     gen_len: int,
-    max_batch_size: int = 1024,
+    max_batch_size: int = 4096,
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
 
@@ -59,7 +59,14 @@ def get_optimial_policy(
             # --- Define Linear Programming Problem ---
             prob = pulp.LpProblem(f"FlexGen_Offloading_{batch_size}_{strategy_idx}", pulp.LpMinimize)
             var_names = ["w_gpu", "w_cpu", "w_disk", "c_gpu", "c_cpu", "c_disk", "h_gpu", "h_cpu", "h_disk"]
-            vars = pulp.LpVariable.dicts(f"placement_{batch_size}_{strategy_idx}", var_names, lowBound=0, upBound=1)
+            cache_cat = pulp.LpBinary if compress_c else pulp.LpContinuous
+            vars = {
+                name: pulp.LpVariable(
+                    f"placement_{batch_size}_{strategy_idx}_{name}",
+                    lowBound=0, upBound=1,
+                    cat=cache_cat if name.startswith('c_') else pulp.LpContinuous
+                ) for name in var_names
+            }
 
             # --- Objective & Constraints ---
             T_cpu_to_gpu = 1 / hardware_profile.cpu_gpu_bandwidth
@@ -93,16 +100,6 @@ def get_optimial_policy(
                 T_compute_gpu = layer_flops / (effective_tflops * 1e12 + 1e-10)
                 total_latency = (T_compute_gpu + min_transfer_time) * num_layers
                 throughput = batch_size / total_latency if total_latency > 0 else 0
-                # -------- [ Debug 日誌 ] --------
-                print(f"\n--- Batch Size: {batch_size}, Strategy: {strategy_idx} ---")
-                print(f"Status: {pulp.LpStatus[prob.status]}")
-                print(f"Transfer Time: {min_transfer_time:.6f} s")
-                print(f"Compute Time (per layer): {T_compute_gpu:.6f} s")
-                print(f"Total Latency: {total_latency:.4f} s")
-                print(f"Calculated Throughput: {throughput:.2f} tokens/sec")
-                print(f"Current Max Throughput: {max_throughput:.2f}")
-                print(f"Placement: w_gpu={vars['w_gpu'].varValue:.2f}, c_gpu={vars['c_gpu'].varValue:.2f}, h_gpu={vars['h_gpu'].varValue:.2f}")
-                # ------------------------------------
 
                 if throughput > max_throughput:
                     max_throughput = throughput
