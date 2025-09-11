@@ -28,106 +28,86 @@ def get_optimial_policy(
         config = model_info.config
         num_layers = config.num_hidden_layers
 
-        # --- 1. Define Model Component Sizes (for one layer) ---
-        total_weight_size = config.model_bytes()
-        # Use ffn_embed_dim for hidden states to account for peak activation memory in FFN layers
-        total_hidden_state_size = batch_size * config.ffn_embed_dim * 2  # FP16
-        total_kv_cache_size = (
+        # --- Define Base Model Component Sizes ---
+        base_weight_size = config.model_bytes()
+        base_hidden_state_size = batch_size * config.ffn_embed_dim * 2  # FP16
+        base_kv_cache_size = (
             batch_size * num_layers * config.n_head *
             (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2 # k/v, FP16
         )
 
-        size_w = total_weight_size / num_layers
-        size_h = total_hidden_state_size
-        size_c = total_kv_cache_size / num_layers
+        # --- Try strategies in order of: None -> Cache-only -> Full Compression ---
+        for strategy_idx, (compress_w, compress_c) in enumerate([(False, False), (False, True), (True, True)]):
+            # --- Setup sizes ---
+            compression_factor = 3.0 # Conservative estimate for 4-bit quantization
+            total_weight_size = base_weight_size / compression_factor if compress_w else base_weight_size
+            total_kv_cache_size = base_kv_cache_size / compression_factor if compress_c else base_kv_cache_size
+            total_hidden_state_size = base_hidden_state_size
 
-        # --- 2. Define Linear Programming Problem ---
-        prob = pulp.LpProblem("FlexGen_Offloading", pulp.LpMinimize)
+            size_w = total_weight_size / num_layers
+            size_h = total_hidden_state_size
+            size_c = total_kv_cache_size / num_layers
 
-        # --- 3. Decision Variables ---
-        var_names = ["w_gpu", "w_cpu", "w_disk", "c_gpu", "c_cpu", "c_disk", "h_gpu", "h_cpu", "h_disk"]
-        vars = pulp.LpVariable.dicts("placement", var_names, lowBound=0, upBound=1)
+            # --- Define Linear Programming Problem ---
+            prob = pulp.LpProblem(f"FlexGen_Offloading_{batch_size}_{strategy_idx}", pulp.LpMinimize)
+            var_names = ["w_gpu", "w_cpu", "w_disk", "c_gpu", "c_cpu", "c_disk", "h_gpu", "h_cpu", "h_disk"]
+            vars = pulp.LpVariable.dicts(f"placement_{batch_size}_{strategy_idx}", var_names, lowBound=0, upBound=1)
 
-        # --- 4. Objective Function (Minimize Data Transfer Time) ---
-        T_cpu_to_gpu = 1 / hardware_profile.cpu_gpu_bandwidth
-        T_disk_to_gpu = 1 / hardware_profile.disk_cpu_bandwidth + T_cpu_to_gpu # Disk -> CPU -> GPU
+            # --- Objective & Constraints ---
+            T_cpu_to_gpu = 1 / hardware_profile.cpu_gpu_bandwidth
+            T_disk_to_gpu = 1 / hardware_profile.disk_cpu_bandwidth + T_cpu_to_gpu
+            prob += (size_w * (vars["w_cpu"] * T_cpu_to_gpu + vars["w_disk"] * T_disk_to_gpu) +
+                     size_c * (vars["c_cpu"] * T_cpu_to_gpu + vars["c_disk"] * T_disk_to_gpu) +
+                     size_h * (vars["h_cpu"] * T_cpu_to_gpu + vars["h_disk"] * T_disk_to_gpu)), "Total_Transfer_Time"
+            prob += vars["w_gpu"] + vars["w_cpu"] + vars["w_disk"] == 1, f"Weight_Completeness_{strategy_idx}"
+            prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, f"Cache_Completeness_{strategy_idx}"
+            prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
+            peak_buffer = (base_weight_size / num_layers) + (base_kv_cache_size / num_layers)
+            prob += ((total_weight_size * vars["w_gpu"]) +
+                     (total_kv_cache_size * vars["c_gpu"]) +
+                     (total_hidden_state_size * vars["h_gpu"]) +
+                     peak_buffer
+            ) <= hardware_profile.gpu_mem * 0.95, f"GPU_Capacity_{strategy_idx}"
+            prob += ((total_weight_size * vars["w_cpu"]) +
+                     (total_kv_cache_size * vars["c_cpu"]) +
+                     (total_hidden_state_size * vars["h_cpu"])
+            ) <= hardware_profile.cpu_mem, f"CPU_Capacity_{strategy_idx}"
 
-        prob += (
-            size_w * (vars["w_cpu"] * T_cpu_to_gpu + vars["w_disk"] * T_disk_to_gpu) +
-            size_c * (vars["c_cpu"] * T_cpu_to_gpu + vars["c_disk"] * T_disk_to_gpu) +
-            size_h * (vars["h_cpu"] * T_cpu_to_gpu + vars["h_disk"] * T_disk_to_gpu)
-        ), "Total_Transfer_Time"
+            # --- Solve and Evaluate ---
+            prob.solve(pulp.PULP_CBC_CMD(msg=False))
 
-        # --- 5. Constraints ---
-        # a) Completeness Constraints (percentages must sum to 1)
-        prob += vars["w_gpu"] + vars["w_cpu"] + vars["w_disk"] == 1, "Weight_Completeness"
-        prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, "Cache_Completeness"
-        prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, "Hidden_State_Completeness"
+            if pulp.LpStatus[prob.status] == "Optimal":
+                min_transfer_time = pulp.value(prob.objective)
+                H = config.input_dim
+                S = input_len + gen_len
+                layer_flops = batch_size * (20 * H**2 + 4 * S * H)
+                T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
+                l_step = T_compute_gpu + min_transfer_time
+                throughput = batch_size / l_step if l_step > 0 else 0
 
-        # b) Storage Capacity Constraints
-        # Buffer is for pre-loading the next layer's weights.
-        buffer = size_w
-        prob += (
-            (total_weight_size * vars["w_gpu"]) +
-            (total_kv_cache_size * vars["c_gpu"]) +
-            (total_hidden_state_size * vars["h_gpu"]) +
-            buffer
-
-        ) <= hardware_profile.gpu_mem * 0.9, "GPU_Capacity"
-
-        prob += (
-            (total_weight_size * vars["w_cpu"]) +
-            (total_kv_cache_size * vars["c_cpu"]) +
-            (total_hidden_state_size * vars["h_cpu"])
-        ) <= hardware_profile.cpu_mem, "CPU_Capacity"
-        # Disk capacity is assumed to be sufficient, so no constraint is added.
-
-        # --- 6. Solve the LP Problem ---
-        prob.solve(pulp.PULP_CBC_CMD(msg=False))
-
-        # --- 7. Evaluate the Solution ---
-        if pulp.LpStatus[prob.status] == "Optimal":
-            min_transfer_time = pulp.value(prob.objective)
-            H = config.input_dim
-            S = input_len + gen_len
-            # A rough approximation for layer FLOPs (per token in batch):
-            # (20 * H^2) for dense layers (projections, MLP) and (4 * S * H) for attention context.
-            layer_flops = batch_size * (20 * H**2 + 4 * S * H)
-            
-            # Add a small epsilon to avoid division by zero.
-            T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
-
-            l_step = T_compute_gpu + min_transfer_time
-            throughput = batch_size / l_step
-
-            if throughput > max_throughput:
-                max_throughput = throughput
-                best_batch_size = batch_size
-                
-                # Auto-detect settings for the policy
-                physical_cores = psutil.cpu_count(logical=False)
-                num_copy_threads = max(1, min(physical_cores // 2, 4))
-                best_num_copy_threads = num_copy_threads
-
-                best_policy = Policy(
-                    gpu_batch_size=batch_size,
-                    num_gpu_batches=1,
-                    w_gpu_percent=vars["w_gpu"].varValue * 100,
-                    w_cpu_percent=vars["w_cpu"].varValue * 100,
-                    cache_gpu_percent=vars["c_gpu"].varValue * 100,
-                    cache_cpu_percent=vars["c_cpu"].varValue * 100,
-                    act_gpu_percent=vars["h_gpu"].varValue * 100,
-                    act_cpu_percent=vars["h_cpu"].varValue * 100,
-                    overlap=True,
-                    sep_layer=True,
-                    pin_weight=True,
-                    cpu_cache_compute=False,
-                    attn_sparsity=1.0,
-                    compress_weight=True,
-                    comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
-                    compress_cache=True,
-                    comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
-                )
+                if throughput > max_throughput:
+                    max_throughput = throughput
+                    best_batch_size = batch_size
+                    physical_cores = psutil.cpu_count(logical=False)
+                    best_num_copy_threads = max(1, min(physical_cores // 2, 4))
+                    
+                    best_policy = Policy(
+                        gpu_batch_size=batch_size,
+                        num_gpu_batches=1,
+                        w_gpu_percent=vars["w_gpu"].varValue * 100,
+                        w_cpu_percent=vars["w_cpu"].varValue * 100,
+                        cache_gpu_percent=vars["c_gpu"].varValue * 100,
+                        cache_cpu_percent=vars["c_cpu"].varValue * 100,
+                        act_gpu_percent=vars["h_gpu"].varValue * 100,
+                        act_cpu_percent=vars["h_cpu"].varValue * 100,
+                        overlap=True, sep_layer=True, pin_weight=True,
+                        cpu_cache_compute=False, attn_sparsity=1.0,
+                        compress_weight=compress_w,
+                        comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
+                        compress_cache=compress_c,
+                        comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
+                    )
+                break
 
     if best_policy:
         print(f"\nFound best policy with a throughput of {max_throughput:.2f} tokens/sec "
