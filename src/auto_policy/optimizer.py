@@ -72,7 +72,8 @@ def get_optimial_policy(
             (total_kv_cache_size * vars["c_gpu"]) +
             (total_hidden_state_size * vars["h_gpu"]) +
             buffer
-        ) <= hardware_profile.gpu_mem, "GPU_Capacity"
+
+        ) <= hardware_profile.gpu_mem * 0.9, "GPU_Capacity"
 
         prob += (
             (total_weight_size * vars["w_cpu"]) +
