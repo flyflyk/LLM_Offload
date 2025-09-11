@@ -39,7 +39,7 @@ def get_optimial_policy(
         is_feasible, _ = is_batch_size_feasible(batch_size, model_name, hardware_profile,
                                                 input_len, gen_len, compression_factors,
                                                 gpu_memory_safety_factor,
-                                                debug=not printed_feasibility_debug)
+                                                debug_print=not printed_feasibility_debug)
         if is_feasible:
             feasible_batch_sizes.append(batch_size)
             printed_feasibility_debug = True
