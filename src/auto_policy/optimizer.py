@@ -83,7 +83,7 @@ def get_optimial_policy(
             peak_buffer = weight_buffer + mlp_buffer
 
             prob += ((total_weight_size * vars["w_gpu"]) +
-                     (total_kv_cache_size * vars["c_gpu"]) +
+                     (size_c * vars["c_gpu"]) +
                      (total_hidden_state_size * vars["h_gpu"]) +
                      peak_buffer
             ) <= hardware_profile.gpu_mem * 0.95, f"GPU_Capacity_{strategy_idx}"
