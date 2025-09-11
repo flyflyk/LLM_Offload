@@ -30,7 +30,8 @@ def get_optimial_policy(
 
         # --- 1. Define Model Component Sizes (for one layer) ---
         total_weight_size = config.model_bytes()
-        total_hidden_state_size = batch_size * config.input_dim * 2  # FP16
+        # Use ffn_embed_dim for hidden states to account for peak activation memory in FFN layers
+        total_hidden_state_size = batch_size * config.ffn_embed_dim * 2  # FP16
         total_kv_cache_size = (
             batch_size * num_layers * config.n_head *
             (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2 # k/v, FP16
