@@ -4,7 +4,11 @@ import torch
 import sys
 import logging
 import yaml
+import warnings
 from types import SimpleNamespace
+
+# Suppress the specific UserWarning from FlexLLMGen about non-tuple indexing
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Using a non-tuple sequence for multidimensional indexing.*")
 
 from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
