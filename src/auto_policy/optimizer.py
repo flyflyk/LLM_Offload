@@ -87,6 +87,16 @@ def get_optimial_policy(
                 T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
                 total_latency = (T_compute_gpu + min_transfer_time) * num_layers
                 throughput = batch_size / total_latency if total_latency > 0 else 0
+                # -------- [ Debug 日誌 ] --------
+                print(f"\n--- Batch Size: {batch_size}, Strategy: {strategy_idx} ---")
+                print(f"Status: {pulp.LpStatus[prob.status]}")
+                print(f"Transfer Time: {min_transfer_time:.6f} s")
+                print(f"Compute Time (per layer): {T_compute_gpu:.6f} s")
+                print(f"Total Latency: {total_latency:.4f} s")
+                print(f"Calculated Throughput: {throughput:.2f} tokens/sec")
+                print(f"Current Max Throughput: {max_throughput:.2f}")
+                print(f"Placement: w_gpu={vars['w_gpu'].varValue:.2f}, c_gpu={vars['c_gpu'].varValue:.2f}, h_gpu={vars['h_gpu'].varValue:.2f}")
+                # ------------------------------------
 
                 if throughput > max_throughput:
                     max_throughput = throughput
