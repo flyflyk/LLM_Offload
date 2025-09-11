@@ -26,16 +26,16 @@ def get_optimial_policy(
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
-    best_num_copy_threads = 4  # Default value
+    best_num_copy_threads = 4
+
     compression_factors = {
         'weight': 2.2,
         'cache': 2.0,
     }
-    gpu_memory_safety_factor = 0.8
-    
+    gpu_memory_safety_factor = 0.80
     feasible_batch_sizes = []
     
-    # Find all feasible batch sizes
+    # Find feasible batch sizes
     for batch_size in tqdm(
         range(4, max_batch_size + 1, 4), desc="Finding Feasible Batch Sizes"
     ):
@@ -50,7 +50,7 @@ def get_optimial_policy(
     
     logger.info(f"Found {len(feasible_batch_sizes)} feasible batch sizes: {feasible_batch_sizes[:10]}...")
     
-    # Find the best policy among feasible batch sizes
+    # Best solution among feasible batch sizes
     for batch_size in tqdm(feasible_batch_sizes, desc="Optimizing Among Feasible Sizes"):
         model_info = get_model_info(model_name)
         config = model_info.config
@@ -96,11 +96,13 @@ def get_optimial_policy(
             prob += vars["w_gpu"] + vars["w_cpu"] + vars["w_disk"] == 1, f"Weight_Completeness_{strategy_idx}"
             prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, f"Cache_Completeness_{strategy_idx}"
             prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
-
             weight_buffer = base_weight_size / num_layers
+
+            # MLP
             mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
             mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2  # FP16
             
+            # Calculate attention buffer and fragmentation overhead
             attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2  # attention scores
             misc_buffer = 0.1 * (weight_buffer + mlp_buffer)
             
@@ -158,12 +160,15 @@ def get_optimial_policy(
     if best_policy:
         logger.info(f"Found best policy with a throughput of {max_throughput:.2f} tokens/sec "
               f"at a batch size of {best_batch_size}.")
-        
+
         estimated_gpu_usage = estimate_actual_gpu_usage(best_policy, model_name, input_len, gen_len, compression_factors)
         gpu_usage_percent = (estimated_gpu_usage / hardware_profile.gpu_mem) * 100
         logger.info(f"Estimated GPU memory usage: {estimated_gpu_usage/1e9:.2f}GB ({gpu_usage_percent:.1f}%)")
         
-        if gpu_usage_percent > 85:
+        if gpu_usage_percent > 95:
+            logger.error(f"Critical: GPU memory usage is {gpu_usage_percent:.1f}%, this will cause OOM!")
+            return None, 4
+        elif gpu_usage_percent > 85:
             logger.warning(f"GPU memory usage is high ({gpu_usage_percent:.1f}%), consider reducing batch size.")
             
     else:
@@ -176,6 +181,8 @@ def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, 
                           compression_factors, gpu_memory_safety_factor):
     model_info = get_model_info(model_name)
     config = model_info.config
+    
+    # Minimum required model component sizes
     base_weight_size = config.model_bytes()
     base_hidden_state_size = batch_size * config.input_dim * (input_len + gen_len) * 2
     base_kv_cache_size = (
@@ -183,11 +190,12 @@ def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, 
         (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
     )
     
+    # Minimum required on GPU
     min_gpu_weight = base_weight_size / (config.num_hidden_layers * compression_factors['weight'])
     min_gpu_cache = base_kv_cache_size / (config.num_hidden_layers * compression_factors['cache'])
     min_gpu_hidden = base_hidden_state_size
     
-
+    # Buffer
     mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
     mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
     attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
@@ -210,6 +218,7 @@ def estimate_actual_gpu_usage(policy, model_name, input_len, gen_len, compressio
         (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
     )
     
+    # Calculate memory usage
     weight_gpu = base_weight_size * (policy.w_gpu_percent / 100)
     if policy.compress_weight:
         weight_gpu /= compression_factors['weight']
