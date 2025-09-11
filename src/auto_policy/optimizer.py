@@ -14,7 +14,7 @@ def get_optimial_policy(
     hardware_profile: HardwareProfile,
     input_len: int,
     gen_len: int,
-    max_batch_size: int = 128,
+    max_batch_size: int = 256,
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
 
@@ -65,7 +65,7 @@ def get_optimial_policy(
             prob += vars["w_gpu"] + vars["w_cpu"] + vars["w_disk"] == 1, f"Weight_Completeness_{strategy_idx}"
             prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, f"Cache_Completeness_{strategy_idx}"
             prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
-            peak_buffer = (base_weight_size / num_layers) + (base_kv_cache_size / num_layers)
+            peak_buffer = base_weight_size / num_layers
             prob += ((total_weight_size * vars["w_gpu"]) +
                      (total_kv_cache_size * vars["c_gpu"]) +
                      (total_hidden_state_size * vars["h_gpu"]) +
