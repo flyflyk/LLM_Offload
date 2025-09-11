@@ -4,6 +4,9 @@ import time
 import torch
 import psutil
 import dataclasses
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclasses.dataclass
 class HardwareProfile:
@@ -63,12 +66,12 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         os.makedirs(cache_dir)
 
     if not force_rerun and os.path.exists(profile_path) and os.path.getsize(profile_path) > 0:
-        print(f"Loading cached hardware profile from {profile_path}...")
+        logger.info(f"Loading cached hardware profile from {profile_path}...")
         with open(profile_path, 'r') as f:
             profile_dict = json.load(f)
             return HardwareProfile(**profile_dict)
 
-    print("Running hardware profiling... (This may take a moment)")
+    logger.info("Running hardware profiling... (This may take a moment)")
     
     # Profile memory
     gpu_mem = torch.cuda.get_device_properties(0).total_memory
@@ -89,8 +92,6 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         disk_cpu_bandwidth=disk_cpu_bw,
         peak_gpu_tflops=gpu_tflops,
     )
-
-    print("Profiling complete.")
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)
         

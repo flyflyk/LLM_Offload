@@ -1,3 +1,4 @@
+import logging
 import psutil
 import pulp
 from tqdm import tqdm
@@ -6,6 +7,8 @@ from FlexLLMGen.flexllmgen.flex_opt import Policy, CompressionConfig
 from .cost_model import get_model_info
 from .profiler import HardwareProfile
 
+logger = logging.getLogger(__name__)
+
 def get_optimial_policy(
     model_name: str,
     hardware_profile: HardwareProfile,
@@ -13,7 +16,7 @@ def get_optimial_policy(
     gen_len: int,
     max_batch_size: int = 128,
 ) -> Policy:
-    print("Searching for the optimal policy using Linear Programming...")
+    logger.info("Searching for the optimal policy using Linear Programming...")
 
     best_policy = None
     max_throughput = 0.0
@@ -109,9 +112,9 @@ def get_optimial_policy(
                     )
 
     if best_policy:
-        print(f"\nFound best policy with a throughput of {max_throughput:.2f} tokens/sec "
+        logger.info(f"Found best policy with a throughput of {max_throughput:.2f} tokens/sec "
               f"at a batch size of {best_batch_size}.")
     else:
-        print("\nCould not find a feasible policy. The model may be too large for the available hardware.")
+        logger.warning("Could not find a feasible policy. The model may be too large for the available hardware.")
 
     return best_policy, best_num_copy_threads

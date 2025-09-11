@@ -36,7 +36,7 @@ class FlexRunner:
         self.env = None
         self.model_load_time = 0
 
-        logger.info(f"[FlexGen] Loading model '{model_name}' with a custom policy...")
+        logger.info(f"[FlexGen] Loading model '{model_name}'...")
 
         start_time = time.time()
 
