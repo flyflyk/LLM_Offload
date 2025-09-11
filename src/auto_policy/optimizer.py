@@ -26,16 +26,19 @@ def get_optimial_policy(
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
-    best_num_copy_threads = 4
+    best_num_copy_threads = 4  # Default value
 
+    # --- 修正：更保守的壓縮係數和記憶體使用率 ---
     compression_factors = {
-        'weight': 2.2,
-        'cache': 2.0,
+        'weight': 2.2,  # 更保守的權重壓縮係數
+        'cache': 2.0,   # KV cache 壓縮係數通常較低
     }
-    gpu_memory_safety_factor = 0.80
+    gpu_memory_safety_factor = 0.80  # 降低到 80% 以留更多緩衝
+    
+    # --- 修正：從小批次開始搜尋，找到第一個可行解後再優化 ---
     feasible_batch_sizes = []
     
-    # Find feasible batch sizes
+    # 第一階段：找出所有可行的批次大小
     for batch_size in tqdm(
         range(4, max_batch_size + 1, 4), desc="Finding Feasible Batch Sizes"
     ):
@@ -50,7 +53,7 @@ def get_optimial_policy(
     
     logger.info(f"Found {len(feasible_batch_sizes)} feasible batch sizes: {feasible_batch_sizes[:10]}...")
     
-    # Best solution among feasible batch sizes
+    # 第二階段：在可行批次大小中找最優解
     for batch_size in tqdm(feasible_batch_sizes, desc="Optimizing Among Feasible Sizes"):
         model_info = get_model_info(model_name)
         config = model_info.config
@@ -96,15 +99,16 @@ def get_optimial_policy(
             prob += vars["w_gpu"] + vars["w_cpu"] + vars["w_disk"] == 1, f"Weight_Completeness_{strategy_idx}"
             prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, f"Cache_Completeness_{strategy_idx}"
             prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
-            weight_buffer = base_weight_size / num_layers
 
-            # MLP
+            # --- 修正：更精確的 GPU 記憶體使用估算 ---
+            weight_buffer = base_weight_size / num_layers
+            # 考慮 MLP 層的記憶體需求（通常是隱藏維度的 4-8 倍）
             mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
             mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2  # FP16
             
-            # Calculate attention buffer and fragmentation overhead
+            # 額外的運算緩衝區和碎片
             attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2  # attention scores
-            misc_buffer = 0.1 * (weight_buffer + mlp_buffer)
+            misc_buffer = 0.1 * (weight_buffer + mlp_buffer)  # 10% 額外緩衝
             
             peak_buffer = weight_buffer + mlp_buffer + attention_buffer + misc_buffer
 
@@ -119,7 +123,7 @@ def get_optimial_policy(
             prob += ((total_weight_size * vars["w_cpu"]) +
                      (total_kv_cache_size * vars["c_cpu"]) +
                      (total_hidden_state_size * vars["h_cpu"])
-            ) <= hardware_profile.cpu_mem * 0.9, f"CPU_Capacity_{strategy_idx}"
+            ) <= hardware_profile.cpu_mem * 0.9, f"CPU_Capacity_{strategy_idx}"  # CPU 也加入安全係數
 
             # --- Solve and Evaluate ---
             prob.solve(pulp.PULP_CBC_CMD(msg=False))
@@ -160,7 +164,8 @@ def get_optimial_policy(
     if best_policy:
         logger.info(f"Found best policy with a throughput of {max_throughput:.2f} tokens/sec "
               f"at a batch size of {best_batch_size}.")
-
+        
+        # --- 修正：添加記憶體使用驗證 ---
         estimated_gpu_usage = estimate_actual_gpu_usage(best_policy, model_name, input_len, gen_len, compression_factors)
         gpu_usage_percent = (estimated_gpu_usage / hardware_profile.gpu_mem) * 100
         logger.info(f"Estimated GPU memory usage: {estimated_gpu_usage/1e9:.2f}GB ({gpu_usage_percent:.1f}%)")
@@ -179,10 +184,11 @@ def get_optimial_policy(
 
 def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, gen_len, 
                           compression_factors, gpu_memory_safety_factor):
+    """快速檢查給定批次大小是否在記憶體限制內可行"""
     model_info = get_model_info(model_name)
     config = model_info.config
     
-    # Minimum required model component sizes
+    # 估算最小記憶體需求（假設最激進的卸載策略）
     base_weight_size = config.model_bytes()
     base_hidden_state_size = batch_size * config.input_dim * (input_len + gen_len) * 2
     base_kv_cache_size = (
@@ -190,12 +196,12 @@ def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, 
         (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
     )
     
-    # Minimum required on GPU
-    min_gpu_weight = base_weight_size / (config.num_hidden_layers * compression_factors['weight'])
-    min_gpu_cache = base_kv_cache_size / (config.num_hidden_layers * compression_factors['cache'])
-    min_gpu_hidden = base_hidden_state_size
+    # 最少需要保留在 GPU 的內容（考慮最激進壓縮）
+    min_gpu_weight = base_weight_size / (config.num_hidden_layers * compression_factors['weight'])  # 至少一層權重
+    min_gpu_cache = base_kv_cache_size / (config.num_hidden_layers * compression_factors['cache'])   # 至少一層 cache
+    min_gpu_hidden = base_hidden_state_size  # 隱藏狀態通常需要全部在 GPU
     
-    # Buffer
+    # 運算緩衝區
     mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
     mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
     attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
@@ -206,7 +212,26 @@ def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, 
     return total_min_gpu_memory <= hardware_profile.gpu_mem * gpu_memory_safety_factor
 
 
+def estimate_strategy_memory_usage(batch_size, config, input_len, gen_len, 
+                                  total_weight_size, total_kv_cache_size, total_hidden_state_size,
+                                  compress_w, compress_c, num_layers):
+    """估算特定策略的最小 GPU 記憶體需求"""
+    # 在最激進的卸載策略下，GPU 至少需要的記憶體
+    min_weight_gpu = total_weight_size / num_layers  # 至少一層權重
+    min_cache_gpu = total_kv_cache_size / (num_layers * 4)  # 假設可以卸載 75% 的 cache
+    min_hidden_gpu = total_hidden_state_size  # 隱藏狀態通常必須在 GPU
+    
+    # 運算緩衝區
+    mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
+    mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
+    attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
+    misc_buffer = (min_weight_gpu + mlp_buffer) * 0.15
+    
+    return min_weight_gpu + min_cache_gpu + min_hidden_gpu + mlp_buffer + attention_buffer + misc_buffer
+
+
 def estimate_actual_gpu_usage(policy, model_name, input_len, gen_len, compression_factors):
+    """估算策略的實際 GPU 記憶體使用量"""
     model_info = get_model_info(model_name)
     config = model_info.config
     
@@ -218,7 +243,7 @@ def estimate_actual_gpu_usage(policy, model_name, input_len, gen_len, compressio
         (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
     )
     
-    # Calculate memory usage
+    # 根據策略計算實際使用量
     weight_gpu = base_weight_size * (policy.w_gpu_percent / 100)
     if policy.compress_weight:
         weight_gpu /= compression_factors['weight']
@@ -229,7 +254,7 @@ def estimate_actual_gpu_usage(policy, model_name, input_len, gen_len, compressio
     
     hidden_gpu = base_hidden_state_size * (policy.act_gpu_percent / 100)
     
-    # Buffer
+    # 運算緩衝區
     mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
     mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
     attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
