@@ -15,6 +15,7 @@ def get_optimial_policy(
     input_len: int,
     gen_len: int,
     max_batch_size: int = 256,
+    gpu_efficiency: float = 0.5,
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
 
@@ -84,7 +85,7 @@ def get_optimial_policy(
                 H = config.input_dim
                 S = input_len + gen_len
                 layer_flops = batch_size * (24 * H**2 + 4 * S * H)
-                T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
+                T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 * gpu_efficiency + 1e-10)
                 total_latency = (T_compute_gpu + min_transfer_time) * num_layers
                 throughput = batch_size / total_latency if total_latency > 0 else 0
                 # -------- [ Debug 日誌 ] --------
