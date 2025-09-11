@@ -19,6 +19,11 @@ def get_optimial_policy(
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
 
+    # --- Throughput Prediction Correction ---
+    # Data: (BS=4, TP=11.96), (BS=120, TP=282.06)
+    eff_tflops_slope = 0.0305
+    eff_tflops_intercept = 0.035
+
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
@@ -85,7 +90,8 @@ def get_optimial_policy(
                 H = config.input_dim
                 S = input_len + gen_len
                 layer_flops = batch_size * (24 * H**2 + 4 * S * H)
-                T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 * gpu_efficiency + 1e-10)
+                effective_tflops = eff_tflops_slope * batch_size + eff_tflops_intercept
+                T_compute_gpu = layer_flops / (effective_tflops * 1e12 + 1e-10)
                 total_latency = (T_compute_gpu + min_transfer_time) * num_layers
                 throughput = batch_size / total_latency if total_latency > 0 else 0
                 # -------- [ Debug 日誌 ] --------
