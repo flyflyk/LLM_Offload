@@ -86,8 +86,16 @@ def get_optimial_policy(
         # --- 7. Evaluate the Solution ---
         if pulp.LpStatus[prob.status] == "Optimal":
             min_transfer_time = pulp.value(prob.objective)
+            H = config.input_dim
+            S = input_len + gen_len
+            # A rough approximation for layer FLOPs (per token in batch):
+            # (20 * H^2) for dense layers (projections, MLP) and (4 * S * H) for attention context.
+            layer_flops = batch_size * (20 * H**2 + 4 * S * H)
+            
+            # Add a small epsilon to avoid division by zero.
+            T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
 
-            l_step = min_transfer_time
+            l_step = T_compute_gpu + min_transfer_time
             throughput = batch_size / l_step
 
             if throughput > max_throughput:
