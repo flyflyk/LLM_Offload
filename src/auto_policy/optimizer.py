@@ -20,9 +20,6 @@ def get_optimial_policy(
     max_batch_size: int = 4096,
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
-    
-    eff_tflops_slope = 0.0305
-    eff_tflops_intercept = 0.035
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
@@ -114,7 +111,8 @@ def get_optimial_policy(
                 H = config.input_dim; S = input_len + gen_len
                 latency_per_layer = (min_transfer_time_per_layer - total_hidden_state_size * (vars["h_cpu"].varValue * T_cpu_to_gpu + vars["h_disk"].varValue * T_disk_to_gpu))
                 layer_flops = batch_size * (24 * H**2 + 4 * S * H)
-                effective_tflops = eff_tflops_slope * batch_size + eff_tflops_intercept
+                effective_tflops = (hardware_profile.tflops_slope * batch_size +
+                                    hardware_profile.tflops_intercept)
                 T_compute_gpu_per_layer = layer_flops / (effective_tflops * 1e12 + 1e-10)
                 total_latency = (T_compute_gpu_per_layer + latency_per_layer) * num_layers + (total_hidden_state_size * (vars["h_cpu"].varValue * T_cpu_to_gpu + vars["h_disk"].varValue * T_disk_to_gpu))
                 throughput = batch_size / total_latency if total_latency > 0 else 0

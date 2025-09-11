@@ -5,6 +5,7 @@ import torch
 import psutil
 import dataclasses
 import logging
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,8 @@ class HardwareProfile:
     cpu_mem: int
     cpu_gpu_bandwidth: float
     disk_cpu_bandwidth: float
-    peak_gpu_tflops: float
+    tflops_slope: float
+    tflops_intercept: float
 
 def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> float:
     tensor = torch.randn(size_mb * 1024 * 1024 // 4, dtype=torch.float32, device=src_device)
@@ -34,31 +36,60 @@ def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> 
     duration = end_time - start_time
     return (size_mb * 1024 * 1024) / duration if duration > 0 else 0
 
-def _profile_compute(device: str, model_dim: int = 4096) -> float:
-    if device == 'cpu' and model_dim > 2048:
-        model_dim = 2048 # Use a smaller matrix for CPU to avoid excessive profiling time
+def _profile_compute_model(device: str) -> tuple[float, float]:
+    logger.info("Profiling compute performance across different batch sizes...")
+    H = 4096 
+    
+    # Profile TFLOPs for a range of batch sizes
+    batch_sizes_to_test = [1, 2, 4, 8, 16, 32, 64]
+    tflops_results = []
 
-    N, K, M = model_dim, model_dim, model_dim
-    a = torch.randn(N, K, device=device, dtype=torch.float16)
-    b = torch.randn(K, M, device=device, dtype=torch.float16)
-    
-    # Warmup computations
-    for _ in range(3):
-        torch.matmul(a, b)
-    
-    if 'cuda' in device:
-        torch.cuda.synchronize()
-    
-    start_time = time.time()
-    torch.matmul(a, b)
-    if 'cuda' in device:
-        torch.cuda.synchronize()
-    end_time = time.time()
-    
-    duration = end_time - start_time
-    flops = 2 * N * K * M
-    tflops = (flops / duration) / 1e12 if duration > 0 else 0
-    return tflops
+    for bs in batch_sizes_to_test:
+        # Simulate a typical GEMM in a transformer MLP: (B, H) @ (H, 4*H)
+        N, K, M = bs, H, 4 * H
+        
+        try:
+            a = torch.randn(N, K, device=device, dtype=torch.float16)
+            b = torch.randn(K, M, device=device, dtype=torch.float16)
+            
+            # Warmup
+            for _ in range(5):
+                torch.matmul(a, b)
+            if 'cuda' in device:
+                torch.cuda.synchronize()
+            
+            start_time = time.time()
+            iters = 20
+            for _ in range(iters):
+                torch.matmul(a, b)
+            if 'cuda' in device:
+                torch.cuda.synchronize()
+            end_time = time.time()
+            
+            duration = (end_time - start_time) / iters
+            flops = 2 * N * K * M
+            tflops = (flops / duration) / 1e12 if duration > 0 else 0
+            tflops_results.append(tflops)
+            logger.info(f"  - Batch Size {bs:3d}: {tflops:.2f} TFLOPs")
+
+        except torch.cuda.OutOfMemoryError:
+            logger.warning(f"  - OOM at batch size {bs}. Stopping compute profiling here.")
+            break
+
+    if len(batch_sizes_to_test) != len(tflops_results):
+        # This happens if OOM occurred. We only use the successful runs.
+        batch_sizes_to_test = batch_sizes_to_test[:len(tflops_results)]
+
+    if len(tflops_results) < 2:
+        logger.warning("Could not collect enough data points to fit a compute model. Using a constant TFLOPs value.")
+        slope = 0.0
+        intercept = np.mean(tflops_results) if tflops_results else 1.0
+    else:
+        # Fit a linear model: TFLOPs = slope * batch_size + intercept
+        slope, intercept = np.polyfit(batch_sizes_to_test, tflops_results, 1)
+        logger.info(f"Fitted compute model: effective_tflops = {slope:.4f} * batch_size + {intercept:.2f}")
+
+    return slope, intercept
 
 def get_hardware_profile(profile_path: str = "hardware_profile.json", force_rerun: bool = False) -> HardwareProfile:
     cache_dir = os.path.dirname(profile_path)
@@ -69,7 +100,11 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         logger.info(f"Loading cached hardware profile from {profile_path}...")
         with open(profile_path, 'r') as f:
             profile_dict = json.load(f)
-            return HardwareProfile(**profile_dict)
+            # Check for new fields, if not present, re-run profiling
+            if 'tflops_slope' in profile_dict and 'tflops_intercept' in profile_dict:
+                return HardwareProfile(**profile_dict)
+            else:
+                logger.info("Cached profile is outdated. Re-running profiling.")
 
     logger.info("Running hardware profiling... (This may take a moment)")
     
@@ -79,19 +114,21 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
 
     # Profile bandwidth (Bytes/s)
     cpu_gpu_bw = _profile_bandwidth('cpu', 'cuda:0')
-    # Simulate disk bandwidth as a fraction of CPU memory bandwidth
-    disk_cpu_bw = _profile_bandwidth('cpu', 'cpu') * 0.1 
+    disk_cpu_bw = _profile_bandwidth('cpu', 'cpu') * 0.1 # Simulate disk bandwidth
 
-    # Profile compute (TFLOPS)
-    gpu_tflops = _profile_compute('cuda:0')
+    # Profile compute model (TFLOPS vs. Batch Size)
+    tflops_slope, tflops_intercept = _profile_compute_model('cuda:0')
 
     profile = HardwareProfile(
         gpu_mem=gpu_mem,
         cpu_mem=cpu_mem,
         cpu_gpu_bandwidth=cpu_gpu_bw,
         disk_cpu_bandwidth=disk_cpu_bw,
-        peak_gpu_tflops=gpu_tflops,
+        tflops_slope=tflops_slope,
+        tflops_intercept=tflops_intercept,
     )
+    
+    logger.info("Profiling complete.")
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)
         
