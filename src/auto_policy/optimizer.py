@@ -70,7 +70,16 @@ def get_optimial_policy(
             # Variable definitions
             prob = pulp.LpProblem(f"FlexGen_Offloading_{batch_size}_{strategy_idx}", pulp.LpMinimize)
             var_names = ["w_gpu", "w_cpu", "w_disk", "c_gpu", "c_cpu", "c_disk", "h_gpu", "h_cpu", "h_disk"]
-            vars = {name: pulp.LpVariable(f"placement_{batch_size}_{strategy_idx}_{name}", lowBound=0, upBound=1) for name in var_names}
+            
+            # If cache is compressed, force the cache placement variables to be binary (0 or 1).
+            cache_cat = pulp.LpBinary if compress_c else pulp.LpContinuous
+            vars = {
+                name: pulp.LpVariable(
+                    f"placement_{batch_size}_{strategy_idx}_{name}",
+                    lowBound=0, upBound=1,
+                    cat=cache_cat if name.startswith('c_') else pulp.LpContinuous
+                ) for name in var_names
+            }
 
             # Constraints and Objective
             T_cpu_to_gpu = 1 / hardware_profile.cpu_gpu_bandwidth
