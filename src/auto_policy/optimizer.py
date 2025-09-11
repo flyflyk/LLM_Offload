@@ -30,7 +30,7 @@ def get_optimial_policy(
 
         # --- Define Base Model Component Sizes ---
         base_weight_size = config.model_bytes()
-        base_hidden_state_size = batch_size * config.ffn_embed_dim * 2  # FP16
+        base_hidden_state_size = batch_size * config.input_dim * (input_len + gen_len) * 2  # FP16
         base_kv_cache_size = (
             batch_size * num_layers * config.n_head *
             (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2 # k/v, FP16
@@ -80,10 +80,10 @@ def get_optimial_policy(
                 min_transfer_time = pulp.value(prob.objective)
                 H = config.input_dim
                 S = input_len + gen_len
-                layer_flops = batch_size * (20 * H**2 + 4 * S * H)
+                layer_flops = batch_size * (24 * H**2 + 4 * S * H)
                 T_compute_gpu = layer_flops / (hardware_profile.peak_gpu_tflops * 1e12 + 1e-10)
-                l_step = T_compute_gpu + min_transfer_time
-                throughput = batch_size / l_step if l_step > 0 else 0
+                total_latency = (T_compute_gpu + min_transfer_time) * num_layers
+                throughput = batch_size / total_latency if total_latency > 0 else 0
 
                 if throughput > max_throughput:
                     max_throughput = throughput
