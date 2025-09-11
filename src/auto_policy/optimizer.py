@@ -21,12 +21,10 @@ def get_optimial_policy(
     # --- Throughput Prediction Correction ---
     eff_tflops_slope = 0.0305
     eff_tflops_intercept = 0.035
-
     best_policy = None
     max_throughput = 0.0
     best_batch_size = 0
     best_num_copy_threads = 4
-
     compression_factors = {
         'weight': 2.2,
         'cache': 2.0,
@@ -34,7 +32,6 @@ def get_optimial_policy(
     gpu_memory_safety_factor = 0.80
     
     feasible_batch_sizes = []
-    
     for batch_size in tqdm(
         range(4, max_batch_size + 1, 4), desc="Finding Feasible Batch Sizes"
     ):
@@ -42,11 +39,9 @@ def get_optimial_policy(
                                  input_len, gen_len, compression_factors, 
                                  gpu_memory_safety_factor):
             feasible_batch_sizes.append(batch_size)
-    
     if not feasible_batch_sizes:
         logger.error("No feasible batch size found. Model too large for available hardware.")
         return None, 4
-    
     logger.info(f"Found {len(feasible_batch_sizes)} feasible batch sizes: {feasible_batch_sizes[:10]}...")
     
     for batch_size in tqdm(feasible_batch_sizes, desc="Optimizing Among Feasible Sizes"):
@@ -86,16 +81,26 @@ def get_optimial_policy(
             prob += vars["c_gpu"] + vars["c_cpu"] + vars["c_disk"] == 1, f"Cache_Completeness_{strategy_idx}"
             prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
 
+            # Weight buffer
             weight_buffer_for_compute = total_weight_size / num_layers
+
+            # MLP
             mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
             mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
+
+            # Attention
             attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
-            misc_buffer = 0.05 * hardware_profile.gpu_mem
+
+            # MHA
+            mha_buffer = 4 * base_hidden_state_size
+
+            # Misc
+            misc_buffer = 0.1 * hardware_profile.gpu_mem
 
             stored_components_mem = (total_weight_size * vars["w_gpu"] +
                                      total_kv_cache_size * vars["c_gpu"] +
                                      total_hidden_state_size * vars["h_gpu"])
-            peak_compute_buffer = weight_buffer_for_compute + mlp_buffer + attention_buffer + misc_buffer
+            peak_compute_buffer = weight_buffer_for_compute + mlp_buffer + attention_buffer + mha_buffer + misc_buffer
             prob += stored_components_mem + peak_compute_buffer <= hardware_profile.gpu_mem * gpu_memory_safety_factor, f"GPU_Capacity_{strategy_idx}"
             prob += ((total_weight_size * vars["w_cpu"]) +
                      (total_kv_cache_size * vars["c_cpu"]) +
@@ -184,9 +189,10 @@ def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, 
     mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
     mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
     attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
+    mha_buffer = 4 * base_hidden_state_size
     misc_buffer = 0.1 * (min_gpu_weight + mlp_buffer)
     
-    total_min_gpu_memory = min_gpu_weight + min_gpu_cache + min_gpu_hidden + mlp_buffer + attention_buffer + misc_buffer
+    total_min_gpu_memory = min_gpu_weight + min_gpu_cache + min_gpu_hidden + mlp_buffer + attention_buffer + mha_buffer + misc_buffer
     
     return total_min_gpu_memory <= hardware_profile.gpu_mem * gpu_memory_safety_factor
 
