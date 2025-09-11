@@ -27,11 +27,31 @@ def get_optimial_policy(
     max_throughput = 0.0
     best_batch_size = 0
     best_num_copy_threads = 4  # Default value
-
-    # --- Iterate through batch sizes (multiples of 4) ---
+    compression_factors = {
+        'weight': 2.2,
+        'cache': 2.0,
+    }
+    gpu_memory_safety_factor = 0.8
+    
+    feasible_batch_sizes = []
+    
+    # Find all feasible batch sizes
     for batch_size in tqdm(
-        range(4, max_batch_size + 1, 4), desc="Optimizing Batch Size"
+        range(4, max_batch_size + 1, 4), desc="Finding Feasible Batch Sizes"
     ):
+        if is_batch_size_feasible(batch_size, model_name, hardware_profile, 
+                                 input_len, gen_len, compression_factors, 
+                                 gpu_memory_safety_factor):
+            feasible_batch_sizes.append(batch_size)
+    
+    if not feasible_batch_sizes:
+        logger.error("No feasible batch size found. Model too large for available hardware.")
+        return None, 4
+    
+    logger.info(f"Found {len(feasible_batch_sizes)} feasible batch sizes: {feasible_batch_sizes[:10]}...")
+    
+    # Find the best policy among feasible batch sizes
+    for batch_size in tqdm(feasible_batch_sizes, desc="Optimizing Among Feasible Sizes"):
         model_info = get_model_info(model_name)
         config = model_info.config
         num_layers = config.num_hidden_layers
@@ -46,10 +66,9 @@ def get_optimial_policy(
 
         # --- Try strategies in order of: None -> Cache-only -> Full Compression ---
         for strategy_idx, (compress_w, compress_c) in enumerate([(False, False), (False, True), (True, True), (True, False)]):
-            # --- Setup sizes ---
-            compression_factor = 3.0 # Conservative estimate for 4-bit quantization
-            total_weight_size = base_weight_size / compression_factor if compress_w else base_weight_size
-            total_kv_cache_size = base_kv_cache_size / compression_factor if compress_c else base_kv_cache_size
+            # --- Setup sizes with corrected compression factors ---
+            total_weight_size = base_weight_size / compression_factors['weight'] if compress_w else base_weight_size
+            total_kv_cache_size = base_kv_cache_size / compression_factors['cache'] if compress_c else base_kv_cache_size
             total_hidden_state_size = base_hidden_state_size
 
             size_w = total_weight_size / num_layers
@@ -79,18 +98,26 @@ def get_optimial_policy(
             prob += vars["h_gpu"] + vars["h_cpu"] + vars["h_disk"] == 1, f"Hidden_State_Completeness_{strategy_idx}"
 
             weight_buffer = base_weight_size / num_layers
-            mlp_buffer = 4 * base_hidden_state_size
-            peak_buffer = weight_buffer + mlp_buffer
+            mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
+            mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2  # FP16
+            
+            attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2  # attention scores
+            misc_buffer = 0.1 * (weight_buffer + mlp_buffer)
+            
+            peak_buffer = weight_buffer + mlp_buffer + attention_buffer + misc_buffer
 
-            prob += ((total_weight_size * vars["w_gpu"]) +
-                     (size_c * vars["c_gpu"]) +
-                     (total_hidden_state_size * vars["h_gpu"]) +
-                     peak_buffer
-            ) <= hardware_profile.gpu_mem * 0.95, f"GPU_Capacity_{strategy_idx}"
+            gpu_memory_constraint = ((total_weight_size * vars["w_gpu"]) +
+                                   (size_c * vars["c_gpu"]) +
+                                   (total_hidden_state_size * vars["h_gpu"]) +
+                                   peak_buffer
+            ) <= hardware_profile.gpu_mem * gpu_memory_safety_factor
+            
+            prob += gpu_memory_constraint, f"GPU_Capacity_{strategy_idx}"
+            
             prob += ((total_weight_size * vars["w_cpu"]) +
                      (total_kv_cache_size * vars["c_cpu"]) +
                      (total_hidden_state_size * vars["h_cpu"])
-            ) <= hardware_profile.cpu_mem, f"CPU_Capacity_{strategy_idx}"
+            ) <= hardware_profile.cpu_mem * 0.9, f"CPU_Capacity_{strategy_idx}"
 
             # --- Solve and Evaluate ---
             prob.solve(pulp.PULP_CBC_CMD(msg=False))
@@ -131,7 +158,72 @@ def get_optimial_policy(
     if best_policy:
         logger.info(f"Found best policy with a throughput of {max_throughput:.2f} tokens/sec "
               f"at a batch size of {best_batch_size}.")
+        
+        estimated_gpu_usage = estimate_actual_gpu_usage(best_policy, model_name, input_len, gen_len, compression_factors)
+        gpu_usage_percent = (estimated_gpu_usage / hardware_profile.gpu_mem) * 100
+        logger.info(f"Estimated GPU memory usage: {estimated_gpu_usage/1e9:.2f}GB ({gpu_usage_percent:.1f}%)")
+        
+        if gpu_usage_percent > 85:
+            logger.warning(f"GPU memory usage is high ({gpu_usage_percent:.1f}%), consider reducing batch size.")
+            
     else:
         logger.warning("Could not find a feasible policy. The model may be too large for the available hardware.")
 
     return best_policy, best_num_copy_threads
+
+
+def is_batch_size_feasible(batch_size, model_name, hardware_profile, input_len, gen_len, 
+                          compression_factors, gpu_memory_safety_factor):
+    model_info = get_model_info(model_name)
+    config = model_info.config
+    base_weight_size = config.model_bytes()
+    base_hidden_state_size = batch_size * config.input_dim * (input_len + gen_len) * 2
+    base_kv_cache_size = (
+        batch_size * config.num_hidden_layers * config.n_head *
+        (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
+    )
+    
+    min_gpu_weight = base_weight_size / (config.num_hidden_layers * compression_factors['weight'])
+    min_gpu_cache = base_kv_cache_size / (config.num_hidden_layers * compression_factors['cache'])
+    min_gpu_hidden = base_hidden_state_size
+    
+
+    mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
+    mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
+    attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
+    misc_buffer = 0.1 * (min_gpu_weight + mlp_buffer)
+    
+    total_min_gpu_memory = min_gpu_weight + min_gpu_cache + min_gpu_hidden + mlp_buffer + attention_buffer + misc_buffer
+    
+    return total_min_gpu_memory <= hardware_profile.gpu_mem * gpu_memory_safety_factor
+
+
+def estimate_actual_gpu_usage(policy, model_name, input_len, gen_len, compression_factors):
+    model_info = get_model_info(model_name)
+    config = model_info.config
+    
+    base_weight_size = config.model_bytes()
+    batch_size = policy.gpu_batch_size
+    base_hidden_state_size = batch_size * config.input_dim * (input_len + gen_len) * 2
+    base_kv_cache_size = (
+        batch_size * config.num_hidden_layers * config.n_head *
+        (input_len + gen_len) * (config.input_dim // config.n_head) * 2 * 2
+    )
+    
+    weight_gpu = base_weight_size * (policy.w_gpu_percent / 100)
+    if policy.compress_weight:
+        weight_gpu /= compression_factors['weight']
+        
+    cache_gpu = base_kv_cache_size * (policy.cache_gpu_percent / 100)
+    if policy.compress_cache:
+        cache_gpu /= compression_factors['cache']
+    
+    hidden_gpu = base_hidden_state_size * (policy.act_gpu_percent / 100)
+    
+    # Buffer
+    mlp_expansion_ratio = getattr(config, 'intermediate_size', 4 * config.input_dim) / config.input_dim
+    mlp_buffer = batch_size * config.input_dim * mlp_expansion_ratio * 2
+    attention_buffer = batch_size * config.n_head * (input_len + gen_len) * (input_len + gen_len) * 2
+    misc_buffer = 0.1 * (weight_gpu + mlp_buffer)
+    
+    return weight_gpu + cache_gpu + hidden_gpu + mlp_buffer + attention_buffer + misc_buffer
