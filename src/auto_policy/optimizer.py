@@ -108,10 +108,6 @@ def get_optimial_policy(
                 physical_cores = psutil.cpu_count(logical=False)
                 num_copy_threads = max(1, min(physical_cores // 2, 4))
                 best_num_copy_threads = num_copy_threads
-                
-                model_name_lower = model_name.lower()
-                large_model_keywords = ["13b", "17.5b", "30b", "66b", "175b"]
-                is_large_model = any(keyword in model_name_lower for keyword in large_model_keywords)
 
                 best_policy = Policy(
                     gpu_batch_size=batch_size,
@@ -127,9 +123,9 @@ def get_optimial_policy(
                     pin_weight=True,
                     cpu_cache_compute=False,
                     attn_sparsity=1.0,
-                    compress_weight=is_large_model,
+                    compress_weight=True,
                     comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
-                    compress_cache=is_large_model,
+                    compress_cache=True,
                     comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
                 )
 
