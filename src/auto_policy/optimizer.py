@@ -14,8 +14,7 @@ def get_optimial_policy(
     hardware_profile: HardwareProfile,
     input_len: int,
     gen_len: int,
-    max_batch_size: int = 256,
-    gpu_efficiency: float = 0.5,
+    max_batch_size: int = 1024,
 ) -> Policy:
     logger.info("Searching for the optimal policy using Linear Programming...")
 
