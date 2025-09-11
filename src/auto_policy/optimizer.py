@@ -40,7 +40,7 @@ def get_optimial_policy(
         )
 
         # --- Try strategies in order of: None -> Cache-only -> Full Compression ---
-        for strategy_idx, (compress_w, compress_c) in enumerate([(False, False), (False, True), (True, True)]):
+        for strategy_idx, (compress_w, compress_c) in enumerate([(False, False), (False, True), (True, True), (True, False)]):
             # --- Setup sizes ---
             compression_factor = 3.0 # Conservative estimate for 4-bit quantization
             total_weight_size = base_weight_size / compression_factor if compress_w else base_weight_size
