@@ -127,8 +127,6 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         tflops_slope=tflops_slope,
         tflops_bias=tflops_bias,
     )
-    
-    logger.info("Profiling complete.")
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)
         

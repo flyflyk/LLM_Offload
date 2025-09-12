@@ -91,7 +91,7 @@ class CostModel:
 
         # Component sizes (total for all layers, FP16)
         weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
-        activation_size = s * h1 * 2 * l * batch_size
+        activation_size = s * h1 * 2 * batch_size
         kv_cache_size = 2 * l * (s + n) * h1 * 2 * batch_size
 
         if compress_weight:
