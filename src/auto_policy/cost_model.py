@@ -96,11 +96,6 @@ class CostModel:
         # for single layer
         activation_size = s * h1 * 2 * batch_size
 
-        if compress_weight:
-            weight_size *= 0.25
-        if compress_cache:
-            kv_cache_size *= 0.25
-
         # Peak memory estimation (Bytes)
         gpu_mem = w_g * weight_size + c_g * kv_cache_size + h_g * activation_size + kv_cache_size / l
         cpu_mem = w_c * weight_size + c_c * kv_cache_size + h_c * activation_size + (weight_size + kv_cache_size) / l
