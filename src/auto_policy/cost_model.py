@@ -102,7 +102,7 @@ class CostModel:
             kv_cache_size *= 0.25
 
         # Peak memory estimation (Bytes)
-        gpu_mem = w_g * weight_size + c_g * kv_cache_size + activation_size + kv_cache_size / l
+        gpu_mem = w_g * weight_size + c_g * kv_cache_size + h_g * activation_size + kv_cache_size / l
         cpu_mem = w_c * weight_size + c_c * kv_cache_size + h_c * activation_size + (weight_size + kv_cache_size) / l
         
         return gpu_mem, cpu_mem
