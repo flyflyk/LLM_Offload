@@ -98,6 +98,32 @@ class CostModel:
         # Attention matrix size for prefill stage (bs, num_heads, seq_len, seq_len)
         attn_matrix_size = batch_size * self.model_config.n_head * s * s * 2 # fp16
 
+        # --- Debug Print of Memory Model Components ---
+        GB = 1024**3
+        if batch_size % 100 == 0 or batch_size < 100: # Print periodically
+            print(f"\n--- Peak Memory Analysis (bs={batch_size}) ---")
+            # Coefficients for the LP variables (the part that is multiplied by policy %)
+            C1 = weight_size_gpu
+            C2 = kv_cache_size_gpu
+            C3 = activation_size_gpu
+            print(f"  - Policy-Dependent Parts (GB):")
+            print(f"    - C(w_g) - Full Weights: {C1 / GB:.2f}")
+            print(f"    - C(c_g) - Full KV Cache: {C2 / GB:.2f}")
+            print(f"    - C(h_g) - Peak Activation: {C3 / GB:.2f}")
+
+            # Constant terms (transient buffers and intermediate tensors)
+            C4 = kv_cache_size_gpu / l
+            C5 = attn_matrix_size
+            C6 = weight_size_gpu / l
+            print(f"  - Transient/Constant Parts (GB):")
+            print(f"    - Transient KV Buf: {C4 / GB:.2f}")
+            print(f"    - Transient Attn Matrix: {C5 / GB:.2f}")
+            print(f"    - Transient Weight Buf: {C6 / GB:.2f}")
+            total_constants = (C4 + C5 + C6) / GB
+            print(f"  - > Total Constant Memory: {total_constants:.2f} GB")
+            print("--------------------------------------------------")
+        # --- End Debug Print ---
+
         gpu_mem = (w_g * weight_size_gpu +                # Permanently stored weights
                    c_g * kv_cache_size_gpu +                # Permanently stored cache
                    h_g * activation_size_gpu +                # Activations
@@ -115,7 +141,6 @@ class CostModel:
         if compress_cache:
             kv_cache_size_cpu *= 0.25
             
-        # Activation size is the same for CPU
         activation_size_cpu = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size) # Input + Output for Residual
 
         # Transient buffer on CPU for moving data (assume uncompressed)
