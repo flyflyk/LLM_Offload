@@ -6,6 +6,7 @@ import torch
 import argparse
 import json
 import psutil
+import dataclasses
 from collections import Counter
 from typing import List
 from transformers import AutoTokenizer
@@ -55,12 +56,14 @@ class FlexRunner:
 
         end_time = time.time()
         self.model_load_time = end_time - start_time
-        
-        # Log model info after init
+
         initial_model_info = self.get_model_info()
+        """
+        # Log model info after init
         logger.info("--- [FlexGen] Layer-to-Device Map ---")
         logger.info(json.dumps(initial_model_info['device_map'], indent=4))
         logger.info("-------------------------------------")
+        """
         if initial_model_info['device_sizes']:
              logger.info(f"[FlexGen] Memory Distribution Summary (GB): {initial_model_info['device_sizes']}")
 
@@ -174,16 +177,15 @@ class FlexRunner:
             policy = optimizer.search()
             physical_cores = psutil.cpu_count(logical=False)
             num_threads = int(max(min(physical_cores / 2, 4), 1))
-
             if policy is None:
                 raise RuntimeError("Failed to find an optimal policy.")
-
             self.config.num_copy_threads = num_threads
-            logger.info(f"Optimal Policy Found: Batch Size: {policy.gpu_batch_size}, "
-                        f"W: {policy.w_gpu_percent:.1f}% GPU / {policy.w_cpu_percent:.1f}% CPU, "
-                        f"C: {policy.cache_gpu_percent:.1f}% GPU / {policy.cache_cpu_percent:.1f}% CPU, "
-                        f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU, "
-                        f"Num Copy Threads: {num_threads}")
+            
+            # Print the detailed policy object
+            policy_dict = dataclasses.asdict(policy)
+            logger.info("--- Optimal Policy Details ---")
+            logger.info(json.dumps(policy_dict, indent=4))
+            logger.info("------------------------------")
         else:
             # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
