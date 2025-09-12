@@ -35,7 +35,7 @@ class Optimizer:
                 }
 
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
-                prob += total_latency
+                prob += total_latency / bs
 
                 gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
                 prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
