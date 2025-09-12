@@ -21,17 +21,32 @@ class Optimizer:
         ]:
             for bs in range(2, 4096, 2):
                 prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
-                p = {
+                w_vars = {
                     'w_g': pulp.LpVariable("w_g", 0, 1),
                     'w_c': pulp.LpVariable("w_c", 0, 1),
                     'w_d': pulp.LpVariable("w_d", 0, 1),
-                    'c_g': pulp.LpVariable("c_g", 0, 1),
-                    'c_c': pulp.LpVariable("c_c", 0, 1),
-                    'c_d': pulp.LpVariable("c_d", 0, 1),
+                }
+
+                if compress_cache:
+                    c_vars = {
+                        'c_g': pulp.LpVariable("c_g", cat=pulp.LpBinary),
+                        'c_c': pulp.LpVariable("c_c", cat=pulp.LpBinary),
+                        'c_d': pulp.LpVariable("c_d", cat=pulp.LpBinary),
+                    }
+                else:
+                    c_vars = {
+                        'c_g': pulp.LpVariable("c_g", 0, 1),
+                        'c_c': pulp.LpVariable("c_c", 0, 1),
+                        'c_d': pulp.LpVariable("c_d", 0, 1),
+                    }
+
+                h_vars = {
                     'h_g': pulp.LpVariable("h_g", cat=pulp.LpBinary),
                     'h_c': pulp.LpVariable("h_c", cat=pulp.LpBinary),
                     'h_d': pulp.LpVariable("h_d", cat=pulp.LpBinary),
                 }
+                
+                p = {**w_vars, **c_vars, **h_vars}
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency / bs
                 gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
