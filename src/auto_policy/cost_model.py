@@ -120,7 +120,6 @@ class CostModel:
             print(f"    - Attention Matrix: {transient_attn_matrix / GB:.2f}")
             print(f"    - FFN Compute Buffer: {(total_seq_len * h2 * 2 * batch_size) / GB:.2f}")
             print(f"    - Total Workspace (inc. overhead): {total_transient_workspace / GB:.2f}")
-            print(f"  - Total GPU Memory: {(w_g * weight_size + c_g * kv_cache_size + h_g * inter_layer_activation_size + total_transient_workspace) * safety_margin / GB:.2f}")
             print("--------------------------------------------------")
 
         # --- GPU Memory Calculation ---
