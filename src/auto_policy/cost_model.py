@@ -89,66 +89,62 @@ class CostModel:
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
 
-        # --- GPU Memory Calculation ---
-        # Always use uncompressed sizes for GPU peak memory estimation
-        weight_size_gpu = (2 * h1**2 + h1 * h2) * 2 * 2 * l
-        kv_cache_size_gpu = 2 * l * (s + n) * h1 * 2 * batch_size
-        activation_size_gpu = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size) # Input + Output for Residual
+        # --- Deconstruct Memory Components ---
+        # 1. Permanent Storage (Policy-Dependent)
+        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
+        kv_cache_size = 2 * l * (s + n) * h1 * 2 * batch_size
+        # The hidden states passed between layers (h1-dim), controlled by h_g/h_c
+        inter_layer_activation_size = s * h1 * 2 * batch_size
 
-        # Attention matrix size for prefill stage (bs, num_heads, seq_len, seq_len)
-        attn_matrix_size = batch_size * self.model_config.n_head * s * s * 2 # fp16
+        # 2. Transient Buffers (Constant cost for GPU compute, independent of policy)
+        transient_weight_buf = weight_size / l
+        transient_kv_buf = kv_cache_size / l
+        transient_attn_matrix = batch_size * self.model_config.n_head * s * s * 2 # fp16
+        # Peak buffer for intra-layer compute (FFN peak + residual + overhead)
+        intra_layer_compute_buf = ((s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size)) * 1.2
 
         # --- Debug Print of Memory Model Components ---
         GB = 1024**3
         if batch_size % 100 == 0 or batch_size < 100: # Print periodically
             print(f"\n--- Peak Memory Analysis (bs={batch_size}) ---")
-            # Coefficients for the LP variables (the part that is multiplied by policy %)
-            C1 = weight_size_gpu
-            C2 = kv_cache_size_gpu
-            C3 = activation_size_gpu
             print(f"  - Policy-Dependent Parts (GB):")
-            print(f"    - C(w_g) - Full Weights: {C1 / GB:.2f}")
-            print(f"    - C(c_g) - Full KV Cache: {C2 / GB:.2f}")
-            print(f"    - C(h_g) - Peak Activation: {C3 / GB:.2f}")
-
-            # Constant terms (transient buffers and intermediate tensors)
-            C4 = kv_cache_size_gpu / l
-            C5 = attn_matrix_size
-            C6 = weight_size_gpu / l
+            print(f"    - C(w_g) - Full Weights: {weight_size / GB:.2f}")
+            print(f"    - C(c_g) - Full KV Cache: {kv_cache_size / GB:.2f}")
+            print(f"    - C(h_g) - Inter-Layer Activation: {inter_layer_activation_size / GB:.2f}")
             print(f"  - Transient/Constant Parts (GB):")
-            print(f"    - Transient KV Buf: {C4 / GB:.2f}")
-            print(f"    - Transient Attn Matrix: {C5 / GB:.2f}")
-            print(f"    - Transient Weight Buf: {C6 / GB:.2f}")
-            total_constants = (C4 + C5 + C6) / GB
-            print(f"  - > Total Constant Memory: {total_constants:.2f} GB")
+            print(f"    - Transient Weight Buf: {transient_weight_buf / GB:.2f}")
+            print(f"    - Transient KV Buf: {transient_kv_buf / GB:.2f}")
+            print(f"    - Transient Attn Matrix: {transient_attn_matrix / GB:.2f}")
+            print(f"    - Intra-Layer Compute Buf: {intra_layer_compute_buf / GB:.2f}")
+            total_constants = (transient_weight_buf + transient_kv_buf + transient_attn_matrix + intra_layer_compute_buf) / GB
+            print(f"  - > Total Constant GPU Memory: {total_constants:.2f} GB")
             print("--------------------------------------------------")
         # --- End Debug Print ---
 
-        gpu_mem = (w_g * weight_size_gpu +                # Permanently stored weights
-                   c_g * kv_cache_size_gpu +                # Permanently stored cache
-                   h_g * activation_size_gpu +                # Activations
-                   kv_cache_size_gpu / l +                  # Transient KV cache buffer
-                   attn_matrix_size +                       # Transient Attention matrix
-                   weight_size_gpu / l)                     # Transient buffer for one layer's weights
+        # --- GPU Memory Calculation ---
+        gpu_mem = (w_g * weight_size +                      # Permanent weights
+                   c_g * kv_cache_size +                    # Permanent KV cache
+                   h_g * inter_layer_activation_size +      # Stored activations (h1-dim)
+                   transient_weight_buf +                   # Transient weights for current layer
+                   transient_kv_buf +                       # Transient KV cache for current layer
+                   transient_attn_matrix +                  # Transient attention matrix
+                   intra_layer_compute_buf)                 # Transient compute buffer (h2-dim peak)
 
         # --- CPU Memory Calculation ---
-        # Use compressed sizes for components stored on CPU
-        weight_size_cpu = (2 * h1**2 + h1 * h2) * 2 * 2 * l
+        compressed_weight_size = weight_size
         if compress_weight:
-            weight_size_cpu *= 0.25
+            compressed_weight_size *= 0.25
 
-        kv_cache_size_cpu = 2 * l * (s + n) * h1 * 2 * batch_size
+        compressed_kv_cache_size = kv_cache_size
         if compress_cache:
-            kv_cache_size_cpu *= 0.25
-            
-        activation_size_cpu = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size) # Input + Output for Residual
+            compressed_kv_cache_size *= 0.25
 
-        # Transient buffer on CPU for moving data (assume uncompressed)
-        transient_buffer_cpu = (weight_size_gpu + kv_cache_size_gpu) / l
+        # CPU holds its portion of activations, plus transient buffers for offloading
+        cpu_transient_buf = (weight_size + kv_cache_size) / l
 
-        cpu_mem = (w_c * weight_size_cpu + 
-                   c_c * kv_cache_size_cpu + 
-                   h_c * activation_size_cpu + 
-                   transient_buffer_cpu)
+        cpu_mem = (w_c * compressed_weight_size + 
+                   c_c * compressed_kv_cache_size + 
+                   h_c * inter_layer_activation_size + 
+                   cpu_transient_buf)
                    
         return gpu_mem, cpu_mem
