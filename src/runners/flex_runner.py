@@ -171,18 +171,19 @@ class FlexRunner:
                 input_len=args.input_len, 
                 gen_len=args.gen_len
             )
-            policy = optimizer.search([args.batch_size])
+            policy = optimizer.search()
             physical_cores = psutil.cpu_count(logical=False)
+            num_threads = int(max(min(physical_cores / 2, 4), 1))
 
             if policy is None:
                 raise RuntimeError("Failed to find an optimal policy.")
 
-            self.config.num_copy_threads = int(max(min(physical_cores / 2, 4), 1))
+            self.config.num_copy_threads = num_threads
             logger.info(f"Optimal Policy Found: Batch Size: {policy.gpu_batch_size}, "
                         f"W: {policy.w_gpu_percent:.1f}% GPU / {policy.w_cpu_percent:.1f}% CPU, "
                         f"C: {policy.cache_gpu_percent:.1f}% GPU / {policy.cache_cpu_percent:.1f}% CPU, "
                         f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU, "
-                        f"Num Copy Threads: {self.config.num_copy_threads}")
+                        f"Num Copy Threads: {num_threads}")
         else:
             # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:

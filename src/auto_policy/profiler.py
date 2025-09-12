@@ -16,7 +16,7 @@ class HardwareProfile:
     cpu_gpu_bandwidth: float
     disk_cpu_bandwidth: float
     tflops_slope: float
-    tflops_intercept: float
+    tflops_bias: float
 
 def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> float:
     tensor = torch.randn(size_mb * 1024 * 1024 // 4, dtype=torch.float32, device=src_device)
@@ -101,7 +101,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         with open(profile_path, 'r') as f:
             profile_dict = json.load(f)
             # Check for new fields, if not present, re-run profiling
-            if 'tflops_slope' in profile_dict and 'tflops_intercept' in profile_dict:
+            if 'tflops_slope' in profile_dict and 'tflops_bias' in profile_dict:
                 return HardwareProfile(**profile_dict)
             else:
                 logger.info("Cached profile is outdated. Re-running profiling.")
@@ -117,7 +117,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     disk_cpu_bw = _profile_bandwidth('cpu', 'cpu') * 0.1 # Simulate disk bandwidth
 
     # Profile compute model (TFLOPS vs. Batch Size)
-    tflops_slope, tflops_intercept = _profile_compute_model('cuda:0')
+    tflops_slope, tflops_bias = _profile_compute_model('cuda:0')
 
     profile = HardwareProfile(
         gpu_mem=gpu_mem,
@@ -125,7 +125,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         cpu_gpu_bandwidth=cpu_gpu_bw,
         disk_cpu_bandwidth=disk_cpu_bw,
         tflops_slope=tflops_slope,
-        tflops_intercept=tflops_intercept,
+        tflops_bias=tflops_bias,
     )
     
     logger.info("Profiling complete.")

@@ -9,39 +9,47 @@ class Optimizer:
         self.gpu_capacity = hardware.gpu_mem
         self.cpu_capacity = hardware.cpu_mem
 
-    def search(self, batch_size_options):
+    def search(self):
         best_policy = None
         min_latency = float('inf')
 
-        for bs in batch_size_options:
-            prob = pulp.LpProblem(f"Policy_Search_bs_{bs}", pulp.LpMinimize)
+        for compress_weight, compress_cache in [
+            (False, False),
+            (False, True),
+            (True, False),
+            (True, True),
+        ]:
+            for bs in range(2, 257, 2):
+                prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
 
-            p = {
-                'w_g': pulp.LpVariable("w_g", 0, 1),
-                'w_c': pulp.LpVariable("w_c", 0, 1),
-                'w_d': pulp.LpVariable("w_d", 0, 1),
-                'c_g': pulp.LpVariable("c_g", 0, 1),
-                'c_c': pulp.LpVariable("c_c", 0, 1),
-                'c_d': pulp.LpVariable("c_d", 0, 1),
-                'h_g': pulp.LpVariable("h_g", 0, 1),
-                'h_c': pulp.LpVariable("h_c", 0, 1),
-                'h_d': pulp.LpVariable("h_d", 0, 1),
-            }
+                p = {
+                    'w_g': pulp.LpVariable("w_g", 0, 1),
+                    'w_c': pulp.LpVariable("w_c", 0, 1),
+                    'w_d': pulp.LpVariable("w_d", 0, 1),
+                    'c_g': pulp.LpVariable("c_g", 0, 1),
+                    'c_c': pulp.LpVariable("c_c", 0, 1),
+                    'c_d': pulp.LpVariable("c_d", 0, 1),
+                    'h_g': pulp.LpVariable("h_g", 0, 1),
+                    'h_c': pulp.LpVariable("h_c", 0, 1),
+                    'h_d': pulp.LpVariable("h_d", 0, 1),
+                }
 
-            total_latency = self.cost_model.estimate_latency(p, bs)
-            prob += total_latency
+                total_latency = self.cost_model.estimate_latency(p, bs, compress_weight, compress_cache)
+                prob += total_latency
 
-            gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs)
-            prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
-            prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
-            
-            prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
-            prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
-            prob += p['h_g'] + p['h_c'] + p['h_d'] == 1, "Activation_Sum_Constraint"
+                gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
+                prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
+                prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
+                
+                prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
+                prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
+                prob += p['h_g'] + p['h_c'] + p['h_d'] == 1, "Activation_Sum_Constraint"
 
-            prob.solve(pulp.PULP_CBC_CMD(msg=0))
+                prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
-            if pulp.LpStatus[prob.status] == 'Optimal':
+                if pulp.LpStatus[prob.status] != 'Optimal':
+                    break
+
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
                     min_latency = current_latency
@@ -60,9 +68,9 @@ class Optimizer:
                         pin_weight=True,
                         cpu_cache_compute=False,
                         attn_sparsity=1.0,
-                        compress_weight=False,
+                        compress_weight=compress_weight,
                         comp_weight_config=CompressionConfig(num_bits=4, group_size=64, group_dim=0, symmetric=False),
-                        compress_cache=False,
+                        compress_cache=compress_cache,
                         comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
                     )
 
