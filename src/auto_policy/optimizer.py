@@ -19,7 +19,7 @@ class Optimizer:
             (True, False),
             (True, True),
         ]:
-            for bs in range(2, 257, 2):
+            for bs in range(2, 4095, 2):
                 prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
 
                 p = {
