@@ -86,7 +86,7 @@ def run_flex_mode(args, use_autoflex=False) -> dict:
     runner = FlexRunner(
         model_name=args.model,
         use_autoflex=use_autoflex,
-        common_args=args,
+        args=args,
         config = config,
         force_rerun = load_config("autoflex").force_rerun_profiler if use_autoflex else False,
     )
