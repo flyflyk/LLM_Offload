@@ -106,7 +106,7 @@ class CostModel:
         total_transient_workspace = (transient_weight_buf + 
                                      transient_kv_buf + 
                                      transient_attn_matrix + 
-                                     intra_layer_compute_buf_base) * 1.2
+                                     intra_layer_compute_buf_base) * 1.3
 
         # --- Debug Print of Memory Model Components ---
         GB = 1024**3
