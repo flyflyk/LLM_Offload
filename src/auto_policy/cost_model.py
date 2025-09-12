@@ -26,7 +26,7 @@ class CostModel:
         cd_bw = self.hardware.disk_cpu_bandwidth
 
         # Compute TFLOPs based on the linear model from profiler
-        eff_tflops = self.hardware.tflops_slope * batch_size + self.hardware.tflops_intercept
+        eff_tflops = self.hardware.tflops_slope * batch_size + self.hardware.tflops_bias
         # Convert TFLOPs to FLOPs/s
         flops_per_second = eff_tflops * 1e12
 
