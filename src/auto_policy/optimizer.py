@@ -34,7 +34,7 @@ class Optimizer:
                     'h_d': pulp.LpVariable("h_d", 0, 1),
                 }
 
-                total_latency = self.cost_model.estimate_latency(p, bs, compress_weight, compress_cache)
+                total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency
 
                 gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
