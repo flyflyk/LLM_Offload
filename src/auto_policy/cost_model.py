@@ -95,10 +95,14 @@ class CostModel:
         kv_cache_size_gpu = 2 * l * (s + n) * h1 * 2 * batch_size
         activation_size_gpu = s * h2 * 2 * batch_size # Use h2 for peak activation
 
+        # Attention matrix size for prefill stage (bs, num_heads, seq_len, seq_len)
+        attn_matrix_size = batch_size * self.model_config.n_head * s * s * 2 # fp16
+
         gpu_mem = (w_g * weight_size_gpu + 
                    c_g * kv_cache_size_gpu + 
                    h_g * activation_size_gpu + 
-                   kv_cache_size_gpu / l)
+                   kv_cache_size_gpu / l +
+                   attn_matrix_size)
 
         # --- CPU Memory Calculation ---
         # Use compressed sizes for components stored on CPU
@@ -111,12 +115,12 @@ class CostModel:
             kv_cache_size_cpu *= 0.25
         activation_size_cpu = s * h2 * 2 * batch_size
 
-        # Transient buffer on CPU for moving data
-        cpu_buffer = (weight_size_gpu + kv_cache_size_gpu) / l
+        # Transient buffer on CPU for moving data (assume uncompressed)
+        transient_buffer_cpu = (weight_size_gpu + kv_cache_size_gpu) / l
 
         cpu_mem = (w_c * weight_size_cpu + 
                    c_c * kv_cache_size_cpu + 
                    h_c * activation_size_cpu + 
-                   cpu_buffer)
+                   transient_buffer_cpu)
                    
         return gpu_mem, cpu_mem
