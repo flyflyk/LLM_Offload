@@ -1,4 +1,5 @@
 import pulp
+import itertools
 from flexllmgen.flex_opt import Policy, CompressionConfig
 from src.auto_policy.cost_model import CostModel
 from src.auto_policy.profiler import HardwareProfile
@@ -13,14 +14,19 @@ class Optimizer:
         best_policy = None
         min_latency = float('inf')
 
-        for compress_weight, compress_cache in [
-            (False, False),
-            (False, True),
-            (True, False),
-            (True, True),
-        ]:
-            for bs in range(2, 500, 2):
+        # Iterate through batch sizes first
+        for bs in itertools.count(start=4, step=4):
+            oom_count_for_bs = 0
+
+            # Then iterate through compression strategies
+            for compress_weight, compress_cache in [
+                (False, False),
+                (False, True),
+                (True, False),
+                (True, True),
+            ]:
                 prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
+                
                 w_vars = {
                     'w_g': pulp.LpVariable("w_g", 0, 1),
                     'w_c': pulp.LpVariable("w_c", 0, 1),
@@ -47,17 +53,23 @@ class Optimizer:
                 }
                 
                 p = {**w_vars, **c_vars, **h_vars}
+                
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency / bs
+                
                 gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
                 prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
                 prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
+                
                 prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
                 prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
                 prob += p['h_g'] + p['h_c'] + p['h_d'] == 1, "Activation_Sum_Constraint"
+                
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
+                
                 if pulp.LpStatus[prob.status] != 'Optimal':
-                    break
+                    oom_count_for_bs += 1
+                    continue
 
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
@@ -82,5 +94,10 @@ class Optimizer:
                         compress_cache=compress_cache,
                         comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
                     )
+
+            # If all compression strategies resulted in OOM for this batch size, stop.
+            if oom_count_for_bs == 4:
+                print(f"Stopping search at batch size {bs} as all configurations resulted in OOM.")
+                break
 
         return best_policy
