@@ -28,9 +28,9 @@ class Optimizer:
                     'c_g': pulp.LpVariable("c_g", 0, 1),
                     'c_c': pulp.LpVariable("c_c", 0, 1),
                     'c_d': pulp.LpVariable("c_d", 0, 1),
-                    'h_g': pulp.LpVariable("h_g", 0, 1),
-                    'h_c': pulp.LpVariable("h_c", 0, 1),
-                    'h_d': pulp.LpVariable("h_d", 0, 1),
+                    'h_g': pulp.LpVariable("h_g", cat=pulp.LpBinary),
+                    'h_c': pulp.LpVariable("h_c", cat=pulp.LpBinary),
+                    'h_d': pulp.LpVariable("h_d", cat=pulp.LpBinary),
                 }
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency / bs
