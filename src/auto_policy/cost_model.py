@@ -90,45 +90,43 @@ class CostModel:
         h2 = self.model_config.ffn_embed_dim
 
         # --- Deconstruct Memory Components ---
-        # 1. Permanent Storage (Policy-Dependent)
+        # 1. Policy-Dependent Storage (can be offloaded)
         weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
         kv_cache_size = 2 * l * (s + n) * h1 * 2 * batch_size
-        # The hidden states passed between layers (h1-dim), controlled by h_g/h_c
         inter_layer_activation_size = s * h1 * 2 * batch_size
 
-        # 2. Transient Buffers (Constant cost for GPU compute, independent of policy)
+        # 2. Transient Compute Buffers (constant cost on GPU, independent of policy)
         transient_weight_buf = weight_size / l
         transient_kv_buf = kv_cache_size / l
         transient_attn_matrix = batch_size * self.model_config.n_head * s * s * 2 # fp16
-        # Peak buffer for intra-layer compute (FFN peak + residual + overhead)
-        intra_layer_compute_buf = ((s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size)) * 1.2
+        # Base buffer for intra-layer compute (FFN peak + residual)
+        intra_layer_compute_buf_base = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size)
+
+        # Model the allocation of a single, large workspace for all transient tensors, with overhead.
+        total_transient_workspace = (transient_weight_buf + 
+                                     transient_kv_buf + 
+                                     transient_attn_matrix + 
+                                     intra_layer_compute_buf_base) * 1.2
 
         # --- Debug Print of Memory Model Components ---
         GB = 1024**3
         if batch_size % 100 == 0 or batch_size < 100: # Print periodically
             print(f"\n--- Peak Memory Analysis (bs={batch_size}) ---")
-            print(f"  - Policy-Dependent Parts (GB):")
+            print(f"  - Policy-Dependent Storage (GB):")
             print(f"    - C(w_g) - Full Weights: {weight_size / GB:.2f}")
             print(f"    - C(c_g) - Full KV Cache: {kv_cache_size / GB:.2f}")
             print(f"    - C(h_g) - Inter-Layer Activation: {inter_layer_activation_size / GB:.2f}")
-            print(f"  - Transient/Constant Parts (GB):")
-            print(f"    - Transient Weight Buf: {transient_weight_buf / GB:.2f}")
-            print(f"    - Transient KV Buf: {transient_kv_buf / GB:.2f}")
-            print(f"    - Transient Attn Matrix: {transient_attn_matrix / GB:.2f}")
-            print(f"    - Intra-Layer Compute Buf: {intra_layer_compute_buf / GB:.2f}")
-            total_constants = (transient_weight_buf + transient_kv_buf + transient_attn_matrix + intra_layer_compute_buf) / GB
-            print(f"  - > Total Constant GPU Memory: {total_constants:.2f} GB")
+            print(f"  - Unified Transient Workspace (GB):")
+            print(f"    - Total Workspace (inc. 20% overhead): {total_transient_workspace / GB:.2f}")
             print("--------------------------------------------------")
         # --- End Debug Print ---
 
         # --- GPU Memory Calculation ---
-        gpu_mem = (w_g * weight_size +                      # Permanent weights
+        # Peak memory is the sum of policy-dependent stored tensors and the unified transient workspace
+        gpu_mem = (w_g * weight_size +                      # Permanently stored weights
                    c_g * kv_cache_size +                    # Permanent KV cache
                    h_g * inter_layer_activation_size +      # Stored activations (h1-dim)
-                   transient_weight_buf +                   # Transient weights for current layer
-                   transient_kv_buf +                       # Transient KV cache for current layer
-                   transient_attn_matrix +                  # Transient attention matrix
-                   intra_layer_compute_buf)                 # Transient compute buffer (h2-dim peak)
+                   total_transient_workspace)               # Single allocation for all transient buffers
 
         # --- CPU Memory Calculation ---
         compressed_weight_size = weight_size
@@ -139,7 +137,6 @@ class CostModel:
         if compress_cache:
             compressed_kv_cache_size *= 0.25
 
-        # CPU holds its portion of activations, plus transient buffers for offloading
         cpu_transient_buf = (weight_size + kv_cache_size) / l
 
         cpu_mem = (w_c * compressed_weight_size + 
