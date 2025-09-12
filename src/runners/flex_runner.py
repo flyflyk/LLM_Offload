@@ -5,6 +5,7 @@ import logging
 import torch
 import argparse
 import json
+import psutil
 from collections import Counter
 from typing import List
 from transformers import AutoTokenizer
@@ -13,8 +14,9 @@ from types import SimpleNamespace
 from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
+from flexllmgen.opt_config import get_opt_config
 from src.auto_policy.profiler import get_hardware_profile
-from src.auto_policy.optimizer import get_optimial_policy
+from src.auto_policy.optimizer import Optimizer
 from src.utils.memory import calc_mem_per_device     
 
 # Add the FlexLLMGen submodule to the Python path
@@ -26,11 +28,11 @@ from flexllmgen.flex_opt import Policy, CompressionConfig
 logger = logging.getLogger(__name__)
 
 class FlexRunner:
-    def __init__(self, model_name: str, use_autoflex: bool, common_args: argparse.Namespace, config: SimpleNamespace, force_rerun: bool = False):
+    def __init__(self, model_name: str, use_autoflex: bool, args: argparse.Namespace, config: SimpleNamespace, force_rerun: bool = False):
         self.model_name = model_name
         self.config = config
         self.force_rerun = force_rerun
-        self.policy = self.create_policy(common_args, use_autoflex)
+        self.policy = self.create_policy(args, use_autoflex)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
         self.model = None
         self.env = None
@@ -41,7 +43,7 @@ class FlexRunner:
         start_time = time.time()
 
         cache_dir = os.path.expanduser(config.cache_path)
-        offload_dir = os.path.expanduser(common_args.offload_dir)
+        offload_dir = os.path.expanduser(args.offload_dir)
         os.makedirs(cache_dir, exist_ok=True)
         os.makedirs(offload_dir, exist_ok=True)
         
@@ -157,27 +159,30 @@ class FlexRunner:
             self.env.close_copy_threads()
         logger.info("[FlexGen] Resources cleaned up.")
     
-    def create_policy(self, common_args: argparse.Namespace, use_autoflex: bool):
+    def create_policy(self, args: argparse.Namespace, use_autoflex: bool):
         policy = None
         if use_autoflex:
             logger.info("Finding optimal policy for AutoFlex...")
             hardware_profile = get_hardware_profile(force_rerun=self.force_rerun)
-            policy, num_threads = get_optimial_policy(
-                model_name=common_args.model,
-                hardware_profile=hardware_profile,
-                input_len=common_args.input_len,
-                gen_len=common_args.gen_len,
+            model_config = get_opt_config(args.model)
+            optimizer = Optimizer(
+                model_config=model_config, 
+                hardware=hardware_profile, 
+                input_len=args.input_len, 
+                gen_len=args.gen_len
             )
+            policy = optimizer.search([args.batch_size])
+            physical_cores = psutil.cpu_count(logical=False)
 
             if policy is None:
                 raise RuntimeError("Failed to find an optimal policy.")
 
-            self.config.num_copy_threads = num_threads
+            self.config.num_copy_threads = int(max(min(physical_cores / 2, 4), 1))
             logger.info(f"Optimal Policy Found: Batch Size: {policy.gpu_batch_size}, "
                         f"W: {policy.w_gpu_percent:.1f}% GPU / {policy.w_cpu_percent:.1f}% CPU, "
                         f"C: {policy.cache_gpu_percent:.1f}% GPU / {policy.cache_cpu_percent:.1f}% CPU, "
                         f"A: {policy.act_gpu_percent:.1f}% GPU / {policy.act_cpu_percent:.1f}% CPU, "
-                        f"Num Copy Threads: {num_threads}")
+                        f"Num Copy Threads: {self.config.num_copy_threads}")
         else:
             # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
@@ -192,7 +197,7 @@ class FlexRunner:
                         f"Pinned-Memory-for-Weights: {self.config.pin_weight}")
 
             policy = Policy(
-                gpu_batch_size=common_args.batch_size, num_gpu_batches=1,
+                gpu_batch_size=args.batch_size, num_gpu_batches=1,
                 w_gpu_percent=self.config.w_gpu_percent,
                 w_cpu_percent=self.config.w_cpu_percent,
                 cache_gpu_percent=self.config.cache_gpu_percent,
