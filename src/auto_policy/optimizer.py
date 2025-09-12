@@ -45,6 +45,13 @@ class Optimizer:
                 prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
                 prob += p['h_g'] + p['h_c'] + p['h_d'] == 1, "Activation_Sum_Constraint"
 
+                # --- Debug Print ---
+                print(f"\n--- Debugging BS={bs}, CW={compress_weight}, CC={compress_cache} ---")
+                print(f"GPU Capacity: {self.gpu_capacity / 1e9:.2f} GB")
+                print(f"LP Problem before solve:")
+                print(prob)
+                # --- End Debug Print ---
+
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
                 if pulp.LpStatus[prob.status] != 'Optimal':
