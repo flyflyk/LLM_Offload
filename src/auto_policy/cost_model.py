@@ -89,15 +89,34 @@ class CostModel:
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
 
-        # Component sizes (total for all layers, FP16)
-        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
-        kv_cache_size = 2 * l * (s + n) * h1 * 2 * batch_size
+        # --- GPU Memory Calculation ---
+        # Always use uncompressed sizes for GPU peak memory estimation
+        weight_size_gpu = (2 * h1**2 + h1 * h2) * 2 * 2 * l
+        kv_cache_size_gpu = 2 * l * (s + n) * h1 * 2 * batch_size
+        activation_size_gpu = s * h2 * 2 * batch_size # Use h2 for peak activation
 
-        # for single layer
-        activation_size = s * h1 * 2 * batch_size
+        gpu_mem = (w_g * weight_size_gpu + 
+                   c_g * kv_cache_size_gpu + 
+                   h_g * activation_size_gpu + 
+                   kv_cache_size_gpu / l)
 
-        # Peak memory estimation (Bytes)
-        gpu_mem = w_g * weight_size + c_g * kv_cache_size + h_g * activation_size + kv_cache_size / l
-        cpu_mem = w_c * weight_size + c_c * kv_cache_size + h_c * activation_size + (weight_size + kv_cache_size) / l
-        
+        # --- CPU Memory Calculation ---
+        # Use compressed sizes for components stored on CPU
+        weight_size_cpu = (2 * h1**2 + h1 * h2) * 2 * 2 * l
+        if compress_weight:
+            weight_size_cpu *= 0.25
+
+        kv_cache_size_cpu = 2 * l * (s + n) * h1 * 2 * batch_size
+        if compress_cache:
+            kv_cache_size_cpu *= 0.25
+        activation_size_cpu = s * h2 * 2 * batch_size
+
+        # Transient buffer on CPU for moving data
+        cpu_buffer = (weight_size_gpu + kv_cache_size_gpu) / l
+
+        cpu_mem = (w_c * weight_size_cpu + 
+                   c_c * kv_cache_size_cpu + 
+                   h_c * activation_size_cpu + 
+                   cpu_buffer)
+                   
         return gpu_mem, cpu_mem
