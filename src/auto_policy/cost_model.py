@@ -93,7 +93,7 @@ class CostModel:
         # Always use uncompressed sizes for GPU peak memory estimation
         weight_size_gpu = (2 * h1**2 + h1 * h2) * 2 * 2 * l
         kv_cache_size_gpu = 2 * l * (s + n) * h1 * 2 * batch_size
-        activation_size_gpu = s * h2 * 2 * batch_size # Use h2 for peak activation
+        activation_size_gpu = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size) # Input + Output for Residual
 
         # Attention matrix size for prefill stage (bs, num_heads, seq_len, seq_len)
         attn_matrix_size = batch_size * self.model_config.n_head * s * s * 2 # fp16
@@ -116,7 +116,7 @@ class CostModel:
             kv_cache_size_cpu *= 0.25
             
         # Activation size is the same for CPU
-        activation_size_cpu = s * h2 * 2 * batch_size
+        activation_size_cpu = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size) # Input + Output for Residual
 
         # Transient buffer on CPU for moving data (assume uncompressed)
         transient_buffer_cpu = (weight_size_gpu + kv_cache_size_gpu) / l
