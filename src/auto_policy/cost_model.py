@@ -88,45 +88,46 @@ class CostModel:
         n = self.gen_len
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
+        total_seq_len = s + n
 
         # --- Deconstruct Memory Components ---
         # 1. Policy-Dependent Storage (can be offloaded)
         weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
-        kv_cache_size = 2 * l * (s + n) * h1 * 2 * batch_size
-        inter_layer_activation_size = s * h1 * 2 * batch_size
+        kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
+        inter_layer_activation_size = total_seq_len * h1 * 2 * batch_size
 
         # 2. Transient Compute Buffers (constant cost on GPU, independent of policy)
         transient_weight_buf = weight_size / l
         transient_kv_buf = kv_cache_size / l
-        transient_attn_matrix = batch_size * self.model_config.n_head * s * s * 2 # fp16
-        # Base buffer for intra-layer compute (FFN peak + residual)
-        intra_layer_compute_buf_base = (s * h1 * 2 * batch_size) + (s * h2 * 2 * batch_size)
-
-        # Model the allocation of a single, large workspace for all transient tensors, with overhead.
+        transient_attn_matrix = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
+        intra_layer_compute_buf_base = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
+        memory_overhead_factor = 1.6
+        safety_margin = 1.2
         total_transient_workspace = (transient_weight_buf + 
-                                     transient_kv_buf + 
-                                     transient_attn_matrix + 
-                                     intra_layer_compute_buf_base) * 1.3
+                                    transient_kv_buf + 
+                                    transient_attn_matrix + 
+                                    intra_layer_compute_buf_base) * memory_overhead_factor
 
         # --- Debug Print of Memory Model Components ---
         GB = 1024**3
-        if batch_size % 100 == 0 or batch_size < 100: # Print periodically
-            print(f"\n--- Peak Memory Analysis (bs={batch_size}) ---")
+        if batch_size % 100 == 0 or batch_size < 100:
+            print(f"\n--- Peak Memory Analysis (bs={batch_size}, seq_len={total_seq_len}) ---")
             print(f"  - Policy-Dependent Storage (GB):")
             print(f"    - C(w_g) - Full Weights: {weight_size / GB:.2f}")
             print(f"    - C(c_g) - Full KV Cache: {kv_cache_size / GB:.2f}")
             print(f"    - C(h_g) - Inter-Layer Activation: {inter_layer_activation_size / GB:.2f}")
             print(f"  - Unified Transient Workspace (GB):")
-            print(f"    - Total Workspace (inc. 20% overhead): {total_transient_workspace / GB:.2f}")
+            print(f"    - Attention Matrix: {transient_attn_matrix / GB:.2f}")
+            print(f"    - FFN Compute Buffer: {(total_seq_len * h2 * 2 * batch_size) / GB:.2f}")
+            print(f"    - Total Workspace (inc. overhead): {total_transient_workspace / GB:.2f}")
+            print(f"  - Total GPU Memory: {(w_g * weight_size + c_g * kv_cache_size + h_g * inter_layer_activation_size + total_transient_workspace) * safety_margin / GB:.2f}")
             print("--------------------------------------------------")
-        # --- End Debug Print ---
 
         # --- GPU Memory Calculation ---
-        # Peak memory is the sum of policy-dependent stored tensors and the unified transient workspace
-        gpu_mem = (w_g * weight_size +                      # Permanently stored weights
-                   c_g * kv_cache_size +                    # Permanent KV cache
-                   h_g * inter_layer_activation_size +      # Stored activations (h1-dim)
-                   total_transient_workspace)               # Single allocation for all transient buffers
+        gpu_mem = (w_g * weight_size +                      
+                c_g * kv_cache_size +                    
+                h_g * inter_layer_activation_size +      
+                total_transient_workspace) * safety_margin
 
         # --- CPU Memory Calculation ---
         compressed_weight_size = weight_size
@@ -140,8 +141,8 @@ class CostModel:
         cpu_transient_buf = (weight_size + kv_cache_size) / l
 
         cpu_mem = (w_c * compressed_weight_size + 
-                   c_c * compressed_kv_cache_size + 
-                   h_c * inter_layer_activation_size + 
-                   cpu_transient_buf)
-                   
+                c_c * compressed_kv_cache_size + 
+                h_c * inter_layer_activation_size + 
+                cpu_transient_buf) * safety_margin
+                
         return gpu_mem, cpu_mem

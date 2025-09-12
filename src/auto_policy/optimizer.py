@@ -58,7 +58,7 @@ class Optimizer:
                 prob += total_latency / bs
                 
                 gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
-                prob += gpu_mem <= (self.gpu_capacity - 2 * 1024**3) * 0.9, "GPU_Memory_Constraint"
+                prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
                 prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
                 
                 prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
