@@ -98,8 +98,8 @@ class CostModel:
         # Prefill
         gpu_home_p = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * s * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
         qkv_p = gbs * 8 * s * h1
-        att_p_1 = c_g * gbs * (2 * s * h1 + 2 * s * h1 + 2 * nh * s**2)
-        att_p_2 = c_g * gbs * (2 * nh * s**2 + 2 * s * h1 + 2 * s * h1)
+        att_p_1 = c_g * gbs * (4 * s * h1) + gbs * (2 * nh * s**2)
+        att_p_2 = att_p_1
         embed_p = gbs * 4 * s * h1
         mlp_p_1 = 2 * gbs * s * (h1 + h2)
         mlp_p_2 = 2 * gbs * s * (h1 + h2)
@@ -111,8 +111,8 @@ class CostModel:
         # Generation
         gpu_home_g = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
         qkv_g = 8 * gbs * h1
-        att_g_1 = c_g * gbs * (2 * h1 + 2 * (s + n) * h1 + 2 * nh * (s + n))
-        att_g_2 = c_g * gbs * (2 * nh * (s + n) + 2 * (s + n) * h1 + 2 * h1)
+        att_g_1 = c_g * gbs * (2 * h1 + 2 * (s + n) * h1) + gbs * (2 * nh * (s + n))
+        att_g_2 = att_g_1
         embed_g = 4 * gbs * h1
         mlp_g_1 = 2 * gbs * (h1 + h2)
         mlp_g_2 = 2 * gbs * (h2 + h1)
