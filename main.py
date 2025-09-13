@@ -166,7 +166,7 @@ if __name__ == "__main__":
     parser.add_argument("--gen-len", type=int, default=20, help="The number of tokens to generate.")
     parser.add_argument("--batch-size", type=int, default=2, help="The number of prompts to process in a batch.")
     parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/offload_dir", help="The common directory for offloading tensors to disk.")
-    parser.add_argument("--log-file", type=str, default="log.log", help="Path to the log file.")
+    parser.add_argument("--log-file", type=str, default="logs/log", help="Path to the log file.")
 
     args = parser.parse_args()
 
