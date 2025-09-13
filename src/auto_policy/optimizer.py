@@ -15,8 +15,10 @@ class Optimizer:
         min_latency = float('inf')
         no_improve_streak = 0
         max_streak = 5
-
         for bs in itertools.count(start=4, step=4):
+            if bs > 1024:
+                print(f"Stopping search at batch size {bs} due to hard limit (1024).")
+                break
             oom_cnt = 0
             found_improve = False
             for compress_weight, compress_cache in [
