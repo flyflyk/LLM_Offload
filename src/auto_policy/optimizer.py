@@ -13,12 +13,12 @@ class Optimizer:
     def search(self):
         best_policy = None
         min_latency = float('inf')
+        no_improve_streak = 0
+        max_streak = 5
 
-        # Iterate through batch sizes first
         for bs in itertools.count(start=4, step=4):
-            oom_count_for_bs = 0
-
-            # Then iterate through compression strategies
+            oom_cnt = 0
+            found_improve = False
             for compress_weight, compress_cache in [
                 (False, False),
                 (False, True),
@@ -71,11 +71,12 @@ class Optimizer:
                 # Solve the LP
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
                 if pulp.LpStatus[prob.status] != 'Optimal':
-                    oom_count_for_bs += 1
+                    oom_cnt += 1
                     continue
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
                     min_latency = current_latency
+                    found_improve = True
                     solved_p = {v.name: v.varValue for v in prob.variables()}
                     best_policy = Policy(
                         gpu_batch_size=bs,
@@ -98,8 +99,18 @@ class Optimizer:
                     )
 
             # If all compression strategies resulted in OOM for this batch size, stop.
-            if oom_count_for_bs == 4:
+            if oom_cnt == 4:
                 print(f"Stopping search at batch size {bs} as all configurations resulted in OOM.")
+                break
+
+            # Early stop if no improvement found
+            if found_improve:
+                no_improve_streak = 0
+            else:
+                no_improve_streak += 1
+            
+            if no_improve_streak >= max_streak:
+                print(f"Stopping search at batch size {bs} after {max_streak} increments with no improvement.")
                 break
 
         return best_policy
