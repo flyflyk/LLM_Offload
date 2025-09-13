@@ -76,11 +76,11 @@ class CostModel:
         total_latency = T_pre * l + T_gen * (n - 1) * l
         return total_latency
 
-    def get_peak_memory(self, policy, batch_size, compress_weight: bool, compress_cache: bool):
+    def get_peak_memory(self, policy, batch_size):
         # Policy variables
-        w_g, w_c, _ = policy['w_g'], policy['w_c'], policy['w_d']
-        c_g, c_c, _ = policy['c_g'], policy['c_c'], policy['c_d']
-        h_g, h_c, _ = policy['h_g'], policy['h_c'], policy['h_d']
+        w_g, w_c, w_d = policy['w_g'], policy['w_c'], policy['w_d']
+        c_g, c_c, c_d = policy['c_g'], policy['c_c'], policy['c_d']
+        h_g, h_c, h_d = policy['h_g'], policy['h_c'], policy['h_d']
 
         # Model parameters
         l = self.model_config.num_hidden_layers
@@ -88,60 +88,53 @@ class CostModel:
         n = self.gen_len
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
-        total_seq_len = s + n
+        nh = self.model_config.n_head
+        bls = batch_size
+        gbs = batch_size # assume global batch size is the same as local batch size
 
-        # --- Deconstruct Memory Components ---
-        # 1. Policy-Dependent Storage (can be offloaded)
-        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
-        kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
-        inter_layer_activation_size = total_seq_len * h1 * 2 * batch_size
+        # --- GPU Peak Memory Expressions ---
+        # Prefill
+        gpu_home_p = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * s * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
+        qkv_p = gbs * 8 * s * h1
+        att_p_1 = c_g * gbs * (2 * s * h1 + 2 * s * h1 + 2 * nh * s**2)
+        att_p_2 = c_g * gbs * (2 * nh * s**2 + 2 * s * h1 + 2 * s * h1)
+        embed_p = gbs * 4 * s * h1
+        mlp_p_1 = 2 * gbs * s * (h1 + h2)
+        mlp_p_2 = 2 * gbs * s * (h1 + h2)
+        gpu_w_p_base = 2 * (1 - w_g) * (8 * h1**2 + 4 * h1 * h2) + (1 - h_g) * 2 * s * h1 * gbs
+        
+        working_mem_p_list = [qkv_p, att_p_1, att_p_2, embed_p, mlp_p_1, mlp_p_2]
+        gpu_peak_p_list = [gpu_home_p + gpu_w_p_base + item for item in working_mem_p_list]
 
-        # 2. Transient Compute Buffers (constant cost on GPU, independent of policy)
-        transient_weight_buf = weight_size / l
-        transient_kv_buf = kv_cache_size / l
-        transient_attn_matrix = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
-        intra_layer_compute_buf_base = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
-        memory_overhead_factor = 1.6
-        safety_margin = 1.2
-        total_transient_workspace = (transient_weight_buf + 
-                                    transient_kv_buf + 
-                                    transient_attn_matrix + 
-                                    intra_layer_compute_buf_base) * memory_overhead_factor
+        # Generation
+        gpu_home_g = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
+        qkv_g = 8 * gbs * h1
+        att_g_1 = c_g * gbs * (2 * h1 + 2 * (s + n) * h1 + 2 * nh * (s + n))
+        att_g_2 = c_g * gbs * (2 * nh * (s + n) + 2 * (s + n) * h1 + 2 * h1)
+        embed_g = 4 * gbs * h1
+        mlp_g_1 = 2 * gbs * (h1 + h2)
+        mlp_g_2 = 2 * gbs * (h2 + h1)
+        gpu_w_g_base = 2 * (1 - w_g) * (8 * h1**2 + 4 * h1 * h2) + (1 - h_g) * 2 * s * h1 * gbs
+        
+        working_mem_g_list = [qkv_g, att_g_1, att_g_2, embed_g, mlp_g_1, mlp_g_2]
+        gpu_peak_g_list = [gpu_home_g + gpu_w_g_base + item for item in working_mem_g_list]
 
-        # --- Debug Print of Memory Model Components ---
-        GB = 1024**3
-        if batch_size % 100 == 0 or batch_size < 100:
-            print(f"\n--- Peak Memory Analysis (bs={batch_size}, seq_len={total_seq_len}) ---")
-            print(f"  - Policy-Dependent Storage (GB):")
-            print(f"    - C(w_g) - Full Weights: {weight_size / GB:.2f}")
-            print(f"    - C(c_g) - Full KV Cache: {kv_cache_size / GB:.2f}")
-            print(f"    - C(h_g) - Inter-Layer Activation: {inter_layer_activation_size / GB:.2f}")
-            print(f"  - Unified Transient Workspace (GB):")
-            print(f"    - Attention Matrix: {transient_attn_matrix / GB:.2f}")
-            print(f"    - FFN Compute Buffer: {(total_seq_len * h2 * 2 * batch_size) / GB:.2f}")
-            print(f"    - Total Workspace (inc. overhead): {total_transient_workspace / GB:.2f}")
-            print("--------------------------------------------------")
+        all_gpu_peak_expressions = gpu_peak_p_list + gpu_peak_g_list
 
-        # --- GPU Memory Calculation ---
-        gpu_mem = (w_g * weight_size +                      
-                c_g * kv_cache_size +                    
-                h_g * inter_layer_activation_size +      
-                total_transient_workspace) * safety_margin
+        # --- CPU Peak Memory Expressions ---
+        # Prefill
+        cpu_home_p = w_c * (8 * h1**2 + 4 * h1 * h2) * l + h_c * 2 * s * h1 * bls + 4 * (s + n) * h1 * c_c * bls * l
+        cpu_w_p = (1 - w_g) * (8 * h1**2 + 4 * h1 * h2) + (1 - h_g) * 2 * s * h1 * gbs
+        cpu_peak_p = cpu_home_p + cpu_w_p
 
-        # --- CPU Memory Calculation ---
-        compressed_weight_size = weight_size
-        if compress_weight:
-            compressed_weight_size *= 0.25
+        # Generation
+        cpu_home_g = w_c * (8 * h1**2 + 4 * h1 * h2) * l + h_c * 2 * h1 * bls + 4 * (s + n) * h1 * c_c * bls * l
+        cpu_w_g = w_d * (8 * h1**2 + 4 * h1 * h2) + h_d * 2 * 2 * h1 * gbs + c_d * 2 * 4 * (s + n) * h1 * gbs + 2 * nh * (s + n) * gbs + 2 * h1 * gbs
+        cpu_peak_g = cpu_home_g + cpu_w_g
 
-        compressed_kv_cache_size = kv_cache_size
-        if compress_cache:
-            compressed_kv_cache_size *= 0.25
+        all_cpu_peak_expressions = [cpu_peak_p, cpu_peak_g]
 
-        cpu_transient_buf = (weight_size + kv_cache_size) / l
-
-        cpu_mem = (w_c * compressed_weight_size + 
-                c_c * compressed_kv_cache_size + 
-                h_c * inter_layer_activation_size + 
-                cpu_transient_buf) * safety_margin
-                
-        return gpu_mem, cpu_mem
+        # --- NVMe Peak Memory ---
+        nvme_peak = (8 * h1**2 + 4 * h1 * h2) * w_d * l + h_d * 2 * s * h1 * bls + c_d * 4 * (s + n) * h1 * bls * l
+        
+        return all_gpu_peak_expressions, all_cpu_peak_expressions, nvme_peak

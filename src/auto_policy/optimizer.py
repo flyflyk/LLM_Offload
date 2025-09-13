@@ -25,14 +25,13 @@ class Optimizer:
                 (True, False),
                 (True, True),
             ]:
+                # Set up LP problem
                 prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
-                
                 w_vars = {
                     'w_g': pulp.LpVariable("w_g", 0, 1),
                     'w_c': pulp.LpVariable("w_c", 0, 1),
                     'w_d': pulp.LpVariable("w_d", 0, 1),
                 }
-
                 if compress_cache:
                     c_vars = {
                         'c_g': pulp.LpVariable("c_g", cat=pulp.LpBinary),
@@ -45,32 +44,34 @@ class Optimizer:
                         'c_c': pulp.LpVariable("c_c", 0, 1),
                         'c_d': pulp.LpVariable("c_d", 0, 1),
                     }
-
                 h_vars = {
                     'h_g': pulp.LpVariable("h_g", cat=pulp.LpBinary),
                     'h_c': pulp.LpVariable("h_c", cat=pulp.LpBinary),
                     'h_d': pulp.LpVariable("h_d", cat=pulp.LpBinary),
                 }
-                
                 p = {**w_vars, **c_vars, **h_vars}
-                
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency / bs
-                
-                gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
-                prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
-                prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
-                
+
+                # Memory constraints
+                gpu_peak_exprs, cpu_peak_exprs, nvme_peak_expr = self.cost_model.get_peak_memory(p, bs)
+                for i, expr in enumerate(gpu_peak_exprs):
+                    prob += expr <= self.gpu_capacity, f"GPU_Memory_Constraint_{i}"
+                for i, expr in enumerate(cpu_peak_exprs):
+                    prob += expr <= self.cpu_capacity, f"CPU_Memory_Constraint_{i}"
+                # Not using NVMe currently, but keep the constraint for future use
+                _ = nvme_peak_expr
+
+                # Sum-to-one constraints
                 prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
                 prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
                 prob += p['h_g'] + p['h_c'] + p['h_d'] == 1, "Activation_Sum_Constraint"
                 
+                # Solve the LP
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
-                
                 if pulp.LpStatus[prob.status] != 'Optimal':
                     oom_count_for_bs += 1
                     continue
-
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
                     min_latency = current_latency
