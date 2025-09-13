@@ -10,9 +10,9 @@ class CostModel:
 
     def estimate_latency(self, prob, policy, batch_size, compress_weight: bool, compress_cache: bool):
         # Policy variables
-        _, w_c, w_d = policy['w_g'], policy['w_c'], policy['w_d']
-        _, c_c, c_d = policy['c_g'], policy['c_c'], policy['c_d']
-        _, h_c, h_d = policy['h_g'], policy['h_c'], policy['h_d']
+        w_g, w_c, w_d = policy['w_g'], policy['w_c'], policy['w_d']
+        c_g, c_c, c_d = policy['c_g'], policy['c_c'], policy['c_d']
+        h_g, h_c, h_d = policy['h_g'], policy['h_c'], policy['h_d']
         
         # Model and prompt parameters
         l = self.model_config.num_hidden_layers
@@ -20,57 +20,59 @@ class CostModel:
         s = self.input_len
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
+        bls = batch_size
 
-        # Hardware bandwidths from profiler (bytes/s)
-        cg_bw = self.hardware.cpu_gpu_bandwidth
-        cd_bw = self.hardware.disk_cpu_bandwidth
+        # Hardware parameters from profiler
+        cpu_flops = self.hardware.cpu_flops
 
-        # Compute TFLOPs based on the linear model from profiler
+        # NOTE: Assuming symmetric bandwidths.
+        ctog_bdw = self.hardware.cpu_gpu_bandwidth
+        gtoc_bdw = self.hardware.cpu_gpu_bandwidth
+        dtoc_bdw = self.hardware.disk_cpu_bandwidth
+        ctod_bdw = self.hardware.disk_cpu_bandwidth
+
+        # NOTE: Using the same GPU FLOPs model for both mm and bmm.
         eff_tflops = self.hardware.tflops_slope * batch_size + self.hardware.tflops_bias
-        # Convert TFLOPs to FLOPs/s
-        flops_per_second = eff_tflops * 1e12
+        mm_flops = eff_tflops * 1e12
+        bmm_flops = eff_tflops * 1e12
 
-        # Average sizes of components for one layer (bytes, FP16)
-        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2
-        activation_size = s * h1 * 2 * batch_size
-        kv_cache_size = 2 * (s + n/2) * h1 * 2 * batch_size
-
+        # Component sizes
+        weight_size_one_layer = (8 * h1**2 + 4 * h1 * h2)
         if compress_weight:
-            weight_size *= 0.25
-        if compress_cache:
-            kv_cache_size *= 0.25
+            weight_size_one_layer *= 0.25
+        cache_compression_factor = 0.25 if compress_cache else 1.0
 
-        # --- Prefill Stage Latency (single layer) ---
+        # --- T_pre ---
         T_pre = pulp.LpVariable(f"T_pre_bs{batch_size}_cw{compress_weight}_cc{compress_cache}", 0)
-        ctog_pre = ((w_c + w_d) * weight_size + (h_c + h_d) * activation_size) / cg_bw
-        gtoc_pre = ((c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size) / cg_bw
-        dtoc_pre = (w_d * weight_size + h_d * activation_size) / cd_bw
-        ctod_pre = (c_d * kv_cache_size + h_d * activation_size) / cd_bw
-        prefill_flops = 2 * s * h1**2 * 2 + 2 * s * h1 * h2 # Simplified estimate
-        compp = (prefill_flops * batch_size) / flops_per_second
-        
-        prob += T_pre >= ctog_pre, f"T_pre_constraint_1_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_pre >= gtoc_pre, f"T_pre_constraint_2_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_pre >= dtoc_pre, f"T_pre_constraint_3_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_pre >= ctod_pre, f"T_pre_constraint_4_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_pre >= compp,    f"T_pre_constraint_5_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
 
-        # --- Decode Stage Latency (single layer, single token) ---
+        ctog_p = ((w_c + w_d) * weight_size_one_layer + 2 * (h_c + h_d) * s * h1 * bls) / ctog_bdw
+        gtoc_p = (4 * (c_c + c_d) * (s + 1) * h1 * bls * cache_compression_factor + 2 * (h_c + h_d) * s * h1 * bls) / gtoc_bdw
+        dtoc_p = (w_d * weight_size_one_layer + 2 * h_d * s * h1 * bls) / dtoc_bdw
+        ctod_p = (4 * c_d * bls * (s + 1) * h1 * cache_compression_factor + 2 * h_d * s * h1 * bls) / ctod_bdw
+        comp_p = (bls * (8 * s * h1**2 + 4 * s * h1 * h2)) / mm_flops + (4 * bls * s**2 * h1) / bmm_flops
+
+        prob += T_pre >= ctog_p, f"T_pre_ctog_p_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_pre >= gtoc_p, f"T_pre_gtoc_p_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_pre >= dtoc_p, f"T_pre_dtoc_p_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_pre >= ctod_p, f"T_pre_ctod_p_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_pre >= comp_p, f"T_pre_comp_p_{batch_size}_c{compress_weight}_{compress_cache}"
+
+        # --- T_gen ---
         T_gen = pulp.LpVariable(f"T_gen_bs{batch_size}_cw{compress_weight}_cc{compress_cache}", 0)
-        activation_size_gen = s * h1 * 2 * batch_size / s
 
-        ctog_gen = ((w_c + w_d) * weight_size + (c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size_gen) / cg_bw
-        gtoc_gen = (h_c + h_d) * activation_size_gen / cg_bw
-        dtoc_gen = (w_d * weight_size + c_d * kv_cache_size + h_d * activation_size_gen) / cd_bw
-        ctod_gen = 0
-        decode_flops = (2 * 1 * h1**2 * 2 + 2 * 1 * h1 * h2) * 2 # Matmuls for q,k,v,o and 2 MLP layers
-        compg = (decode_flops * batch_size) / flops_per_second
+        ctog_g = ((w_c + w_d) * weight_size_one_layer + 2 * (h_c + h_d) * h1 * bls) / ctog_bdw
+        gtoc_g = (2 * (h_c + h_d) * h1 * bls) / gtoc_bdw
+        dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 * cache_compression_factor + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
+        ctod_g = (4 * c_d * bls * h1 * cache_compression_factor + 2 * h_d * h1 * bls) / ctod_bdw
+        gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1 * cache_compression_factor) / bmm_flops
+        cpu_comp_g = (4 * (c_c + c_d) * bls * (s + n / 2) * h1 * cache_compression_factor) / cpu_flops
+        comp_g = gpu_comp_g + cpu_comp_g
 
-        prob += T_gen >= ctog_gen, f"T_gen_constraint_1_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_gen >= gtoc_gen, f"T_gen_constraint_2_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_gen >= dtoc_gen, f"T_gen_constraint_3_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_gen >= ctod_gen, f"T_gen_constraint_4_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
-        prob += T_gen >= compg,    f"T_gen_constraint_5_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
+        prob += T_gen >= ctog_g, f"T_gen_ctog_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= gtoc_g, f"T_gen_gtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= dtoc_g, f"T_gen_dtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= ctod_g, f"T_gen_ctod_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= comp_g, f"T_gen_comp_g_{batch_size}_c{compress_weight}_{compress_cache}"
 
         # Total latency
         total_latency = T_pre * l + T_gen * (n - 1) * l

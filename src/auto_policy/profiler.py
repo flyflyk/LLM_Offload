@@ -17,6 +17,7 @@ class HardwareProfile:
     disk_cpu_bandwidth: float
     tflops_slope: float
     tflops_bias: float
+    cpu_flops: float
 
 def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> float:
     tensor = torch.randn(size_mb * 1024 * 1024 // 4, dtype=torch.float32, device=src_device)
@@ -91,6 +92,28 @@ def _profile_compute_model(device: str) -> tuple[float, float]:
 
     return slope, intercept
 
+def _profile_cpu_compute() -> float:
+    logger.info("Profiling CPU compute performance...")
+    N, K, M = 512, 1024, 512
+    a = torch.randn(N, K, device='cpu', dtype=torch.float32)
+    b = torch.randn(K, M, device='cpu', dtype=torch.float32)
+        
+    # Warmup
+    for _ in range(3):
+        torch.matmul(a, b)
+        
+    start_time = time.time()
+    iters = 10
+    for _ in range(iters):
+        torch.matmul(a, b)
+    end_time = time.time()
+        
+    duration = (end_time - start_time) / iters
+    flops = 2 * N * K * M
+    cpu_flops = (flops / duration) if duration > 0 else 0
+    logger.info(f"  - CPU FLOPS: {cpu_flops / 1e9:.2f} GFLOPs")
+    return cpu_flops
+
 def get_hardware_profile(profile_path: str = "hardware_profile.json", force_rerun: bool = False) -> HardwareProfile:
     cache_dir = os.path.dirname(profile_path)
     if cache_dir and not os.path.exists(cache_dir):
@@ -101,7 +124,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         with open(profile_path, 'r') as f:
             profile_dict = json.load(f)
             # Check for new fields, if not present, re-run profiling
-            if 'tflops_slope' in profile_dict and 'tflops_bias' in profile_dict:
+            if 'tflops_slope' in profile_dict and 'tflops_bias' in profile_dict and 'cpu_flops' in profile_dict:
                 return HardwareProfile(**profile_dict)
             else:
                 logger.info("Cached profile is outdated. Re-running profiling.")
@@ -119,6 +142,9 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     # Profile compute model (TFLOPS vs. Batch Size)
     tflops_slope, tflops_bias = _profile_compute_model('cuda:0')
 
+    # Profile CPU compute
+    cpu_flops = _profile_cpu_compute()
+
     profile = HardwareProfile(
         gpu_mem=gpu_mem,
         cpu_mem=cpu_mem,
@@ -126,6 +152,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         disk_cpu_bandwidth=disk_cpu_bw,
         tflops_slope=tflops_slope,
         tflops_bias=tflops_bias,
+        cpu_flops=cpu_flops,
     )
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)
