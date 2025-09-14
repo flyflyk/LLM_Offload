@@ -13,14 +13,8 @@ class Optimizer:
     def search(self):
         best_policy = None
         min_latency = float('inf')
-        no_improve_streak = 0
-        max_streak = 5
         for bs in itertools.count(start=4, step=4):
-            if bs > 1024:
-                print(f"Stopping search at batch size {bs} due to hard limit (1024).")
-                break
             oom_cnt = 0
-            found_improve = False
             for compress_weight, compress_cache in [
                 (False, False),
                 (False, True),
@@ -103,16 +97,6 @@ class Optimizer:
             # If all compression strategies resulted in OOM for this batch size, stop.
             if oom_cnt == 4:
                 print(f"Stopping search at batch size {bs} as all configurations resulted in OOM.")
-                break
-
-            # Early stop if no improvement found
-            if found_improve:
-                no_improve_streak = 0
-            else:
-                no_improve_streak += 1
-            
-            if no_improve_streak >= max_streak:
-                print(f"Stopping search at batch size {bs} after {max_streak} increments with no improvement.")
                 break
 
         return best_policy
