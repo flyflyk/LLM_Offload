@@ -29,9 +29,10 @@ class CostModel:
         ctod_bdw = self.hardware.disk_cpu_write_bandwidth
 
         # NOTE: Using the same GPU FLOPs model for both mm and bmm.
-        eff_tflops = self.hardware.get_eff_tflops(batch_size)
-        mm_flops = eff_tflops * 1e12
-        bmm_flops = eff_tflops * 1e12
+        gpu_tflops = self.hardware.get_gpu_tflops(batch_size)
+        mm_flops = gpu_tflops * 1e12
+        bmm_flops = gpu_tflops * 1e12
+        cpu_tflops = self.hardware.get_cpu_tflops(batch_size)
 
         # Component sizes
         weight_size_one_layer = (8 * h1**2 + 4 * h1 * h2)
@@ -61,14 +62,15 @@ class CostModel:
         gtoc_g = (2 * (h_c + h_d) * h1 * bls) / gtoc_bdw
         dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 * cache_compression_factor + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
         ctod_g = (4 * c_d * bls * h1 * cache_compression_factor + 2 * h_d * h1 * bls) / ctod_bdw
-        gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1 * cache_compression_factor) / bmm_flops
-        comp_g = gpu_comp_g
+        gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1) / bmm_flops
+        cpu_comp_g = (4*(c_c + c_d) * bls * (s + n / 2) * h1) / cpu_tflops
 
         prob += T_gen >= ctog_g, f"T_gen_ctog_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= gtoc_g, f"T_gen_gtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= dtoc_g, f"T_gen_dtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= ctod_g, f"T_gen_ctod_g_{batch_size}_c{compress_weight}_{compress_cache}"
-        prob += T_gen >= comp_g, f"T_gen_comp_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= gpu_comp_g, f"T_gen_comp1_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        prob += T_gen >= cpu_comp_g, f"T_gen_comp2_g_{batch_size}_c{compress_weight}_{compress_cache}"
 
         # Total latency
         total_latency = T_pre * l + T_gen * (n - 1) * l
@@ -87,14 +89,14 @@ class CostModel:
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
         nh = self.model_config.n_head
-        bls = 1
+        bls = batch_size
         gbs = batch_size
 
         # --- GPU Peak Memory Expressions ---
         # Prefill
         gpu_home_p = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * s * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
         qkv_p = gbs * 8 * s * h1
-        att_p_1 = c_g * gbs * (4 * s * h1) + gbs * (2 * nh * s**2)
+        att_p_1  = c_g * gbs * (2*s * h1 + 2*s * h1 + 2*nh * s**2)
         att_p_2 = att_p_1
         embed_p = gbs * 4 * s * h1
         mlp_p_1 = 2 * gbs * s * (h1 + h2)
@@ -107,7 +109,7 @@ class CostModel:
         # Generation
         gpu_home_g = w_g * (8 * h1**2 + 4 * h1 * h2) * l + h_g * 2 * h1 * bls + 4 * (s + n) * h1 * c_g * bls * l
         qkv_g = 8 * gbs * h1
-        att_g_1 = c_g * gbs * (2 * h1 + 2 * (s + n) * h1) + gbs * (2 * nh * (s + n))
+        att_g_1 = att_g_1  = c_g * gbs * (2*h1 + 2*(s + n)*h1 + 2*nh*(s + n))
         att_g_2 = att_g_1
         embed_g = 4 * gbs * h1
         mlp_g_1 = 2 * gbs * (h1 + h2)

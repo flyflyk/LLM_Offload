@@ -18,16 +18,20 @@ class HardwareProfile:
     cpu_gpu_read_bandwidth: float
     disk_cpu_write_bandwidth: float
     disk_cpu_read_bandwidth: float
-    tflops_a: float
-    tflops_b: float
+    gpu_tflops_a: float
+    gpu_tflops_b: float
+    cpu_tflops_a: float
+    cpu_tflops_b: float
 
-    def get_eff_tflops(self, batch_size):
+    def get_gpu_tflops(self, batch_size):
         if batch_size <= 0:
             return 0
-        return self.tflops_a + self.tflops_b * np.log(batch_size)
+        return self.gpu_tflops_a + self.gpu_tflops_b * np.log(batch_size)
 
-    def get_flops(self, batch_size):
-        return self.get_eff_tflops(batch_size) * 1e12
+    def get_cpu_tflops(self, batch_size):
+        if batch_size <= 0:
+            return 0
+        return self.cpu_tflops_a + self.cpu_tflops_b * np.log(batch_size)
 
 def _profile_bandwidth(device1: str, device2: str, size_mb: int = 256) -> float:
     logger.info(f"Profiling bandwidth between {device1} and {device2}...")
@@ -109,31 +113,29 @@ def _profile_disk_bandwidth(size_mb: int = 128, tmp_dir: str = None) -> float:
         if os.path.exists(tmp_file_path):
             os.remove(tmp_file_path)
 
-def _profile_compute_model(device: str) -> tuple[float, float, list, list]:
-    logger.info("Profiling compute performance across different batch sizes...")
-    H = 4096 
+def _profile_compute_model(device: str, dtype: torch.dtype = torch.float16) -> tuple[float, float]:
+    logger.info(f"Profiling compute performance on {device} across different batch sizes...")
+    H = 4096
     batch_sizes = list(range(4, 1025, 4))
     tflops_results = []
 
     for bs in batch_sizes:
-        # Simulate a typical GEMM in a transformer MLP: (B, H) @ (H, 4*H)
         N, K, M = bs, H, 4 * H
-        
         try:
-            a = torch.randn(N, K, device=device, dtype=torch.float16)
-            b = torch.randn(K, M, device=device, dtype=torch.float16)
+            a = torch.randn(N, K, device=device, dtype=dtype)
+            b = torch.randn(K, M, device=device, dtype=dtype)
             
             # Warmup
             for _ in range(5):
                 torch.matmul(a, b)
-            if 'cuda' in device:
+            if "cuda" in device:
                 torch.cuda.synchronize()
             
             start_time = time.time()
             iters = 20
             for _ in range(iters):
                 torch.matmul(a, b)
-            if 'cuda' in device:
+            if "cuda" in device:
                 torch.cuda.synchronize()
             end_time = time.time()
             
@@ -142,30 +144,26 @@ def _profile_compute_model(device: str) -> tuple[float, float, list, list]:
             tflops = (flop / duration) / 1e12 if duration > 0 else 0
             tflops_results.append(tflops)
 
-        except torch.cuda.OutOfMemoryError:
-            logger.warning(f"OOM at batch size {bs}. Stopping compute profiling here.")
+        except Exception as e:
+            logger.warning(f"Failed at batch size {bs} on {device} due to: {e}. Stopping profiling here.")
             break
 
-    # Trim the batch size list to match the results if OOM occurred
-    if len(batch_sizes) != len(tflops_results):
+    if len(batch_sizes) > len(tflops_results):
         batch_sizes = batch_sizes[:len(tflops_results)]
 
     if len(tflops_results) < 2:
-        logger.warning("Could not collect enough data points to fit a compute model. Using a constant TFLOPs value.")
+        logger.warning(f"Could not collect enough data points on {device} to fit a model. Using a constant TFLOPs value.")
         tflops_a = np.mean(tflops_results) if tflops_results else 1.0
         tflops_b = 0.0
     else:
-        # Ensure the collected data is monotonically increasing
         tflops_results = np.maximum.accumulate(tflops_results)
-        
-        # Log model: TFLOPs = a + b * ln(batch_size)
         x = np.log(batch_sizes)
         y = tflops_results
         A = np.vstack([np.ones(len(x)), x]).T
         tflops_a, tflops_b = np.linalg.lstsq(A, y, rcond=None)[0]
-        logger.info(f"Fitted compute model: effective_tflops = {tflops_a:.2f} + {tflops_b:.4f} * ln(batch_size)")
+        logger.info(f"Fitted compute model for {device}: effective_tflops = {tflops_a:.2f} + {tflops_b:.4f} * ln(batch_size)")
 
-    return tflops_a, tflops_b, batch_sizes, tflops_results
+    return tflops_a, tflops_b
 
 def get_hardware_profile(profile_path: str = "hardware_profile.json", force_rerun: bool = False) -> HardwareProfile:
     cache_dir = os.path.dirname(profile_path)
@@ -176,8 +174,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         logger.info(f"Loading cached hardware profile from {profile_path}...")
         with open(profile_path, 'r') as f:
             profile_dict = json.load(f)
-            # Check for new fields, if not present, re-run profiling
-            if 'tflops_a' in profile_dict and 'tflops_b' in profile_dict:
+            if 'gpu_tflops_a' in profile_dict and 'cpu_tflops_a' in profile_dict:
                 return HardwareProfile(**profile_dict)
             else:
                 logger.info("Cached profile is outdated. Re-running profiling.")
@@ -198,8 +195,9 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     logger.info(f"Disk Write Bandwidth: {disk_cpu_write_bw / 1e9:.2f} GB/s")
     logger.info(f"Disk Read Bandwidth: {disk_cpu_read_bw / 1e9:.2f} GB/s")
 
-    # Profile compute model (TFLOPS vs. Batch Size)
-    tflops_a, tflops_b, _, _ = _profile_compute_model('cuda:0')
+    # Profile compute models
+    gpu_tflops_a, gpu_tflops_b = _profile_compute_model('cuda:0', dtype=torch.float16)
+    cpu_tflops_a, cpu_tflops_b = _profile_compute_model('cpu', dtype=torch.float16)
 
     profile = HardwareProfile(
         gpu_mem=gpu_mem,
@@ -208,8 +206,10 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         cpu_gpu_read_bandwidth=cpu_gpu_read_bw,
         disk_cpu_write_bandwidth=disk_cpu_write_bw,
         disk_cpu_read_bandwidth=disk_cpu_read_bw,
-        tflops_a=tflops_a,
-        tflops_b=tflops_b,
+        gpu_tflops_a=gpu_tflops_a,
+        gpu_tflops_b=gpu_tflops_b,
+        cpu_tflops_a=cpu_tflops_a,
+        cpu_tflops_b=cpu_tflops_b,
     )
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)
@@ -217,6 +217,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     return profile
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     profile = get_hardware_profile(force_rerun=True)
     print("Hardware Profile:")
     print(json.dumps(dataclasses.asdict(profile), indent=4))
