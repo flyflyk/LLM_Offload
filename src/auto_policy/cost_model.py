@@ -63,14 +63,14 @@ class CostModel:
         dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 * cache_compression_factor + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
         ctod_g = (4 * c_d * bls * h1 * cache_compression_factor + 2 * h_d * h1 * bls) / ctod_bdw
         gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1) / bmm_flops
-        cpu_comp_g = (4*(c_c + c_d) * bls * (s + n / 2) * h1) / cpu_tflops
+        #cpu_comp_g = (4*(c_c + c_d) * bls * (s + n / 2) * h1) / cpu_tflops
 
         prob += T_gen >= ctog_g, f"T_gen_ctog_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= gtoc_g, f"T_gen_gtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= dtoc_g, f"T_gen_dtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= ctod_g, f"T_gen_ctod_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= gpu_comp_g, f"T_gen_comp1_g_{batch_size}_c{compress_weight}_{compress_cache}"
-        prob += T_gen >= cpu_comp_g, f"T_gen_comp2_g_{batch_size}_c{compress_weight}_{compress_cache}"
+        #prob += T_gen >= cpu_comp_g, f"T_gen_comp2_g_{batch_size}_c{compress_weight}_{compress_cache}"
 
         # Total latency
         total_latency = T_pre * l + T_gen * (n - 1) * l
