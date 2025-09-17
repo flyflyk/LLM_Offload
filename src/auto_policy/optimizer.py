@@ -56,7 +56,7 @@ class Optimizer:
                     prob += expr * safety_margin <= self.gpu_capacity, f"GPU_Memory_Constraint_{i}"
                 for i, expr in enumerate(cpu_peak_exprs):
                     prob += expr * safety_margin <= self.cpu_capacity, f"CPU_Memory_Constraint_{i}"
-                # Not using NVMe currently, but keep the constraint for future use
+                # Not using NVMe currently
                 _ = nvme_peak_expr
 
                 # Sum-to-one constraints
@@ -72,7 +72,6 @@ class Optimizer:
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
                     min_latency = current_latency
-                    found_improve = True
                     solved_p = {v.name: v.varValue for v in prob.variables()}
                     best_policy = Policy(
                         gpu_batch_size=bs,
