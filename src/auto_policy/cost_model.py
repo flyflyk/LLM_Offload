@@ -11,7 +11,7 @@ class CostModel:
     def estimate_latency(self, prob, policy, batch_size, compress_weight: bool, compress_cache: bool):
         # Policy variables
         _, w_c, w_d = policy['w_g'], policy['w_c'], policy['w_d']
-        _, c_c, c_d = policy['c_g'], policy['c_c'], policy['c_d']
+        c_g, c_c, c_d = policy['c_g'], policy['c_c'], policy['c_d']
         _, h_c, h_d = policy['h_g'], policy['h_c'], policy['h_d']
         
         # Model and prompt parameters
@@ -47,7 +47,7 @@ class CostModel:
         gtoc_pre = ((c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size) / gc_bw
         dtoc_pre = (w_d * weight_size + h_d * activation_size) / dc_bw
         ctod_pre = (c_d * kv_cache_size + h_d * activation_size) / cd_bw
-        prefill_flops = 2 * s * h1**2 * 2 + 2 * s * h1 * h2 # Simplified estimate
+        prefill_flops = (8 * s * h1**2 + 4 * s * h1 * h2) + 4 * s**2 * h1
         compp = (prefill_flops * batch_size) / flops_per_second
         
         prob += T_pre >= ctog_pre, f"T_pre_constraint_1_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
@@ -64,7 +64,7 @@ class CostModel:
         gtoc_gen = (h_c + h_d) * activation_size_gen / gc_bw
         dtoc_gen = (w_d * weight_size + c_d * kv_cache_size + h_d * activation_size_gen) / dc_bw
         ctod_gen = 0
-        decode_flops = (2 * 1 * h1**2 * 2 + 2 * 1 * h1 * h2) * 2 # Matmuls for q,k,v,o and 2 MLP layers
+        decode_flops = (8 * h1**2 + 4 * h1 * h2) + 4 * c_g * (s + n/2) * h1
         compg = (decode_flops * batch_size) / flops_per_second
 
         prob += T_gen >= ctog_gen, f"T_gen_constraint_1_bs{batch_size}_cw{compress_weight}_cc{compress_cache}"
@@ -104,16 +104,13 @@ class CostModel:
         act_buf = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
         overhead_factor = 1.6
         safety_margin = 1.2
-        total_transient_workspace = (w_buf + 
-                                    kv_buf + 
-                                    attn_buf + 
-                                    act_buf) * overhead_factor
+        total_buf = (w_buf + kv_buf + attn_buf + act_buf) * overhead_factor
 
         # --- GPU Memory Calculation ---
         gpu_mem = (w_g * weight_size +                      
                 c_g * kv_cache_size +                    
                 h_g * act_size +      
-                total_transient_workspace) * safety_margin
+                total_buf) * safety_margin
 
         # --- CPU Memory Calculation ---
         compressed_weight_size = weight_size if not compress_weight else weight_size * 0.25
