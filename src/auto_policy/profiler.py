@@ -20,8 +20,8 @@ class HardwareProfile:
     disk_cpu_read_bandwidth: float
     gpu_tflops_a: float
     gpu_tflops_b: float
-    cpu_tflops_a: float
-    cpu_tflops_b: float
+    #cpu_tflops_a: float
+    #cpu_tflops_b: float
 
     def get_gpu_tflops(self, batch_size):
         if batch_size <= 0:
@@ -198,7 +198,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
 
     # Profile compute models
     gpu_tflops_a, gpu_tflops_b = _profile_compute_model('cuda:0', dtype=torch.float16)
-    cpu_tflops_a, cpu_tflops_b = _profile_compute_model('cpu', dtype=torch.float16)
+    #cpu_tflops_a, cpu_tflops_b = _profile_compute_model('cpu', dtype=torch.float16)
 
     profile = HardwareProfile(
         gpu_mem=gpu_mem,
@@ -209,8 +209,8 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
         disk_cpu_read_bandwidth=disk_cpu_read_bw,
         gpu_tflops_a=gpu_tflops_a,
         gpu_tflops_b=gpu_tflops_b,
-        cpu_tflops_a=cpu_tflops_a,
-        cpu_tflops_b=cpu_tflops_b,
+        #cpu_tflops_a=cpu_tflops_a,
+        #cpu_tflops_b=cpu_tflops_b,
     )
     with open(profile_path, 'w') as f:
         json.dump(dataclasses.asdict(profile), f, indent=4)

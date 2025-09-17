@@ -32,7 +32,7 @@ class CostModel:
         gpu_tflops = self.hardware.get_gpu_tflops(batch_size)
         mm_flops = gpu_tflops * 1e12
         bmm_flops = gpu_tflops * 1e12
-        cpu_tflops = self.hardware.get_cpu_tflops(batch_size)
+        #cpu_tflops = self.hardware.get_cpu_tflops(batch_size)
 
         # Component sizes
         weight_size_one_layer = (8 * h1**2 + 4 * h1 * h2)
