@@ -6,6 +6,7 @@ import psutil
 import dataclasses
 import logging
 import numpy as np
+import tempfile
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,47 @@ def _profile_bandwidth(src_device: str, dst_device: str, size_mb: int = 256) -> 
     
     duration = end_time - start_time
     return (size_mb * 1024 * 1024) / duration if duration > 0 else 0
+
+def _profile_disk_bandwidth(size_mb: int = 128, tmp_dir: str = None) -> float:
+    if tmp_dir and not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir)
+    
+    with tempfile.NamedTemporaryFile(dir=tmp_dir, delete=False) as tmp_file:
+        tmp_file_path = tmp_file.name
+
+    data = np.ones(size_mb * 1024 * 1024, dtype=np.uint8)
+    data_bytes = data.nbytes
+
+    try:
+        # Profile Write
+        logger.info(f"  - Profiling disk write bandwidth with a {size_mb}MB temp file...")
+        start_time = time.time()
+        with open(tmp_file_path, "wb") as f:
+            f.write(data)
+        end_time = time.time()
+        write_duration = end_time - start_time
+        write_bw = data_bytes / write_duration if write_duration > 0 else 0
+        logger.info(f"  - Disk Write Bandwidth: {write_bw / 1e9:.2f} GB/s")
+
+        # Profile Read
+        logger.info(f"  - Profiling disk read bandwidth with a {size_mb}MB temp file...")
+        start_time = time.time()
+        with open(tmp_file_path, "rb") as f:
+            _ = f.read()
+        end_time = time.time()
+        read_duration = end_time - start_time
+        read_bw = data_bytes / read_duration if read_duration > 0 else 0
+        logger.info(f"  - Disk Read Bandwidth: {read_bw / 1e9:.2f} GB/s")
+
+        # Return the average bandwidth
+        avg_bw = (write_bw + read_bw) / 2
+        logger.info(f"  - Average Disk-CPU Bandwidth: {avg_bw / 1e9:.2f} GB/s")
+        return avg_bw
+
+    finally:
+        # Ensure the temporary file is deleted
+        if os.path.exists(tmp_file_path):
+            os.remove(tmp_file_path)
 
 def _profile_compute_model(device: str) -> tuple[float, float]:
     logger.info("Profiling compute performance across different batch sizes...")
@@ -105,7 +147,6 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
                 return HardwareProfile(**profile_dict)
             else:
                 logger.info("Cached profile is outdated. Re-running profiling.")
-
     logger.info("Running hardware profiling... (This may take a moment)")
     
     # Profile memory
@@ -114,9 +155,9 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
 
     # Profile bandwidth (Bytes/s)
     cpu_gpu_bw = _profile_bandwidth('cpu', 'cuda:0')
-    disk_cpu_bw = _profile_bandwidth('cpu', 'cpu') * 0.1 # Simulate disk bandwidth
+    disk_cpu_bw = _profile_disk_bandwidth()
 
-    # Profile compute model (TFLOPS vs. Batch Size)
+    # Profile compute model (TFLOPs)
     tflops_slope, tflops_bias = _profile_compute_model('cuda:0')
 
     profile = HardwareProfile(
