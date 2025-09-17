@@ -102,7 +102,7 @@ class CostModel:
         kv_buf = kv_cache_size / l
         attn_buf = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
         act_buf = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
-        overhead_factor = 1.6
+        overhead_factor = 1.0
         safety_margin = 1.2
         total_buf = (w_buf + kv_buf + attn_buf + act_buf) * overhead_factor
 
