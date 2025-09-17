@@ -23,16 +23,13 @@ class CostModel:
         bls = batch_size
 
         # Hardware parameters from profiler
-        cpu_flops = self.hardware.cpu_flops
-
-        # NOTE: Assuming symmetric bandwidths.
-        ctog_bdw = self.hardware.cpu_gpu_bandwidth
-        gtoc_bdw = self.hardware.cpu_gpu_bandwidth
-        dtoc_bdw = self.hardware.disk_cpu_bandwidth
-        ctod_bdw = self.hardware.disk_cpu_bandwidth
+        ctog_bdw = self.hardware.cpu_gpu_write_bandwidth
+        gtoc_bdw = self.hardware.cpu_gpu_read_bandwidth
+        dtoc_bdw = self.hardware.disk_cpu_read_bandwidth
+        ctod_bdw = self.hardware.disk_cpu_write_bandwidth
 
         # NOTE: Using the same GPU FLOPs model for both mm and bmm.
-        eff_tflops = self.hardware.tflops_slope * batch_size + self.hardware.tflops_bias
+        eff_tflops = self.hardware.get_eff_tflops(batch_size)
         mm_flops = eff_tflops * 1e12
         bmm_flops = eff_tflops * 1e12
 
@@ -65,8 +62,7 @@ class CostModel:
         dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 * cache_compression_factor + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
         ctod_g = (4 * c_d * bls * h1 * cache_compression_factor + 2 * h_d * h1 * bls) / ctod_bdw
         gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1 * cache_compression_factor) / bmm_flops
-        cpu_comp_g = (4 * (c_c + c_d) * bls * (s + n / 2) * h1 * cache_compression_factor) / cpu_flops
-        comp_g = gpu_comp_g + cpu_comp_g
+        comp_g = gpu_comp_g
 
         prob += T_gen >= ctog_g, f"T_gen_ctog_g_{batch_size}_c{compress_weight}_{compress_cache}"
         prob += T_gen >= gtoc_g, f"T_gen_gtoc_g_{batch_size}_c{compress_weight}_{compress_cache}"
