@@ -87,8 +87,8 @@ class CostModel:
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
         nh = self.model_config.n_head
-        bls = batch_size
-        gbs = batch_size # assume global batch size is the same as local batch size
+        bls = 1
+        gbs = batch_size
 
         # --- GPU Peak Memory Expressions ---
         # Prefill
