@@ -32,7 +32,7 @@ class CostModel:
         flops_per_second = eff_tflops * 1e12
 
         # Average sizes of components for one layer (bytes, FP16)
-        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2
+        weight_size = (4 * h1**2 + 2 * h1 * h2) * 2
         activation_size = s * h1 * 2 * batch_size
         kv_cache_size = 2 * (s + n/2) * h1 * 2 * batch_size
 
@@ -91,7 +91,7 @@ class CostModel:
         h2 = self.model_config.ffn_embed_dim
         total_seq_len = s + n
 
-        # --- Deconstruct Memory Components ---
+        # --- Memory Components ---
         # 1. Policy-Dependent Storage
         weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
         kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
