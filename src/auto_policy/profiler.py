@@ -116,7 +116,8 @@ def _profile_disk_bandwidth(size_mb: int = 128, tmp_dir: str = None) -> float:
 def _profile_compute_model(device: str, dtype: torch.dtype = torch.float16) -> tuple[float, float]:
     logger.info(f"Profiling compute performance on {device} across different batch sizes...")
     H = 4096
-    batch_sizes = list(range(4, 1025, 4))
+    MAX_BATCH_SIZE = 512 if device == 'cpu' else 1024
+    batch_sizes = list(range(4, MAX_BATCH_SIZE + 1, 4))
     tflops_results = []
 
     for bs in batch_sizes:
