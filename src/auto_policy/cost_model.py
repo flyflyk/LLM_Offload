@@ -22,12 +22,13 @@ class CostModel:
         h2 = self.model_config.ffn_embed_dim
 
         # Hardware bandwidths from profiler (bytes/s)
-        cg_bw = self.hardware.cpu_gpu_bandwidth
-        cd_bw = self.hardware.disk_cpu_bandwidth
+        cg_bw = self.hardware.cpu_gpu_write_bandwidth
+        gc_bw = self.hardware.cpu_gpu_read_bandwidth
+        cd_bw = self.hardware.disk_cpu_write_bandwidth
+        dc_bw = self.hardware.disk_cpu_read_bandwidth
 
-        # Compute TFLOPs based on the linear model from profiler
-        eff_tflops = self.hardware.tflops_slope * batch_size + self.hardware.tflops_bias
-        # Convert TFLOPs to FLOPs/s
+        # Get GPU TFLOPS
+        eff_tflops = self.hardware.get_gpu_tflops(batch_size)
         flops_per_second = eff_tflops * 1e12
 
         # Average sizes of components for one layer (bytes, FP16)
@@ -43,8 +44,8 @@ class CostModel:
         # --- Prefill Stage Latency (single layer) ---
         T_pre = pulp.LpVariable(f"T_pre_bs{batch_size}_cw{compress_weight}_cc{compress_cache}", 0)
         ctog_pre = ((w_c + w_d) * weight_size + (h_c + h_d) * activation_size) / cg_bw
-        gtoc_pre = ((c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size) / cg_bw
-        dtoc_pre = (w_d * weight_size + h_d * activation_size) / cd_bw
+        gtoc_pre = ((c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size) / gc_bw
+        dtoc_pre = (w_d * weight_size + h_d * activation_size) / dc_bw
         ctod_pre = (c_d * kv_cache_size + h_d * activation_size) / cd_bw
         prefill_flops = 2 * s * h1**2 * 2 + 2 * s * h1 * h2 # Simplified estimate
         compp = (prefill_flops * batch_size) / flops_per_second
@@ -60,8 +61,8 @@ class CostModel:
         activation_size_gen = s * h1 * 2 * batch_size / s
 
         ctog_gen = ((w_c + w_d) * weight_size + (c_c + c_d) * kv_cache_size + (h_c + h_d) * activation_size_gen) / cg_bw
-        gtoc_gen = (h_c + h_d) * activation_size_gen / cg_bw
-        dtoc_gen = (w_d * weight_size + c_d * kv_cache_size + h_d * activation_size_gen) / cd_bw
+        gtoc_gen = (h_c + h_d) * activation_size_gen / gc_bw
+        dtoc_gen = (w_d * weight_size + c_d * kv_cache_size + h_d * activation_size_gen) / dc_bw
         ctod_gen = 0
         decode_flops = (2 * 1 * h1**2 * 2 + 2 * 1 * h1 * h2) * 2 # Matmuls for q,k,v,o and 2 MLP layers
         compg = (decode_flops * batch_size) / flops_per_second
@@ -91,57 +92,36 @@ class CostModel:
         total_seq_len = s + n
 
         # --- Deconstruct Memory Components ---
-        # 1. Policy-Dependent Storage (can be offloaded)
+        # 1. Policy-Dependent Storage
         weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
         kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
-        inter_layer_activation_size = total_seq_len * h1 * 2 * batch_size
+        act_size = total_seq_len * h1 * 2 * batch_size
 
-        # 2. Transient Compute Buffers (constant cost on GPU, independent of policy)
-        transient_weight_buf = weight_size / l
-        transient_kv_buf = kv_cache_size / l
-        transient_attn_matrix = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
-        intra_layer_compute_buf_base = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
-        memory_overhead_factor = 1.6
+        # 2. Temporary Compute Buffers
+        w_buf = weight_size / l
+        kv_buf = kv_cache_size / l
+        attn_buf = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
+        act_buf = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
+        overhead_factor = 1.6
         safety_margin = 1.2
-        total_transient_workspace = (transient_weight_buf + 
-                                    transient_kv_buf + 
-                                    transient_attn_matrix + 
-                                    intra_layer_compute_buf_base) * memory_overhead_factor
-
-        # --- Debug Print of Memory Model Components ---
-        GB = 1024**3
-        if batch_size % 100 == 0 or batch_size < 100:
-            print(f"\n--- Peak Memory Analysis (bs={batch_size}, seq_len={total_seq_len}) ---")
-            print(f"  - Policy-Dependent Storage (GB):")
-            print(f"    - C(w_g) - Full Weights: {weight_size / GB:.2f}")
-            print(f"    - C(c_g) - Full KV Cache: {kv_cache_size / GB:.2f}")
-            print(f"    - C(h_g) - Inter-Layer Activation: {inter_layer_activation_size / GB:.2f}")
-            print(f"  - Unified Transient Workspace (GB):")
-            print(f"    - Attention Matrix: {transient_attn_matrix / GB:.2f}")
-            print(f"    - FFN Compute Buffer: {(total_seq_len * h2 * 2 * batch_size) / GB:.2f}")
-            print(f"    - Total Workspace (inc. overhead): {total_transient_workspace / GB:.2f}")
-            print("--------------------------------------------------")
+        total_transient_workspace = (w_buf + 
+                                    kv_buf + 
+                                    attn_buf + 
+                                    act_buf) * overhead_factor
 
         # --- GPU Memory Calculation ---
         gpu_mem = (w_g * weight_size +                      
                 c_g * kv_cache_size +                    
-                h_g * inter_layer_activation_size +      
+                h_g * act_size +      
                 total_transient_workspace) * safety_margin
 
         # --- CPU Memory Calculation ---
-        compressed_weight_size = weight_size
-        if compress_weight:
-            compressed_weight_size *= 0.25
-
-        compressed_kv_cache_size = kv_cache_size
-        if compress_cache:
-            compressed_kv_cache_size *= 0.25
-
-        cpu_transient_buf = (weight_size + kv_cache_size) / l
-
+        compressed_weight_size = weight_size if not compress_weight else weight_size * 0.25
+        compressed_kv_cache_size = kv_cache_size if not compress_cache else kv_cache_size * 0.25
+        cpu_buf = (weight_size + kv_cache_size) / l
         cpu_mem = (w_c * compressed_weight_size + 
                 c_c * compressed_kv_cache_size + 
-                h_c * inter_layer_activation_size + 
-                cpu_transient_buf) * safety_margin
+                h_c * act_size + 
+                cpu_buf) * safety_margin
                 
         return gpu_mem, cpu_mem
