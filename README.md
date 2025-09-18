@@ -34,9 +34,6 @@
     # 安裝依賴套件
     pip install -r requirements.txt
     pip install -e FlexLLMGen
-
-    # (可選) 若要在 accelerate 模式下使用 4-bit 量化，請安裝 bitsandbytes
-    pip install bitsandbytes
     ```
 
 ---
