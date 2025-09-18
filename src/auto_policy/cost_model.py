@@ -94,7 +94,7 @@ class CostModel:
         total_seq_len = s + n
 
         # --- Memory Components ---
-        safety_margin = 1.2
+        safety_margin = 1.0
 
         # 1. Resident Sizes
         weight_size = (4 * h1**2 + 2 * h1 * h2) * 2 * l

@@ -58,12 +58,6 @@ class FlexRunner:
         self.model_load_time = end_time - start_time
 
         initial_model_info = self.get_model_info()
-        """
-        # Log model info after init
-        logger.info("--- [FlexGen] Layer-to-Device Map ---")
-        logger.info(json.dumps(initial_model_info['device_map'], indent=4))
-        logger.info("-------------------------------------")
-        """
         if initial_model_info['device_sizes']:
              logger.info(f"[FlexGen] Memory Distribution Summary (GB): {initial_model_info['device_sizes']}")
 
