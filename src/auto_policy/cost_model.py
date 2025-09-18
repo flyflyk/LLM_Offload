@@ -110,7 +110,7 @@ class CostModel:
 
         # 3. MHA Compute Buffers
         qkv_proj_buf = 3 * batch_size * total_seq_len * h1 * 2
-        attn_w_buf = nh * batch_size * total_seq_len**2 * 2
+        attn_w_buf = nh * batch_size * total_seq_len**2 * 4 # float32 for softmax
         attn_val_buf = nh * batch_size * total_seq_len * hd * 2
         output_buf = batch_size * total_seq_len * h1 * 2
         mha_buf = qkv_proj_buf + attn_w_buf + attn_val_buf + output_buf
