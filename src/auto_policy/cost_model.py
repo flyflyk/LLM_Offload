@@ -87,38 +87,49 @@ class CostModel:
         l = self.model_config.num_hidden_layers
         s = self.input_len
         n = self.gen_len
+        nh = self.model_config.n_head
         h1 = self.model_config.hidden_size
         h2 = self.model_config.ffn_embed_dim
+        hd = h1 // nh
         total_seq_len = s + n
 
         # --- Memory Components ---
-        # 1. Policy-Dependent Storage
-        weight_size = (2 * h1**2 + h1 * h2) * 2 * 2 * l
+        safety_margin = 1.2
+
+        # 1. Resident Sizes
+        weight_size = (4 * h1**2 + 2 * h1 * h2) * 2 * l
         kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
         act_size = total_seq_len * h1 * 2 * batch_size
+        attn_mask_size = batch_size * total_seq_len
 
-        # 2. Temporary Compute Buffers
-        w_buf = weight_size / l
-        kv_buf = kv_cache_size / l
-        attn_buf = batch_size * self.model_config.n_head * total_seq_len * total_seq_len * 2  # fp16
-        act_buf = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
-        overhead_factor = 1.6
-        safety_margin = 1.2
-        total_buf = (w_buf + kv_buf + attn_buf + act_buf) * overhead_factor
+        # 2. Pipelines
+        w_pipe = weight_size / l * 3 # j-1, j, j+1
+        kv_pipe = kv_cache_size / l * 3
+        act_pipe = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
+        gpu_pipe = w_pipe + kv_pipe + act_pipe
+
+        # 3. MHA Compute Buffers
+        qkv_proj_buf = 3 * batch_size * total_seq_len * h1 * 2
+        attn_w_buf = nh * batch_size * total_seq_len**2 * 2
+        attn_val_buf = nh * batch_size * total_seq_len * hd * 2
+        output_buf = batch_size * total_seq_len * h1 * 2
+        mha_buf = qkv_proj_buf + attn_w_buf + attn_val_buf + output_buf
 
         # --- GPU Memory Calculation ---
         gpu_mem = (w_g * weight_size +                      
                 c_g * kv_cache_size +                    
-                h_g * act_size +      
-                total_buf) * safety_margin
+                h_g * act_size +
+                attn_mask_size +
+                gpu_pipe +      
+                mha_buf) * safety_margin
 
         # --- CPU Memory Calculation ---
         compressed_weight_size = weight_size if not compress_weight else weight_size * 0.25
         compressed_kv_cache_size = kv_cache_size if not compress_cache else kv_cache_size * 0.25
-        cpu_buf = (weight_size + kv_cache_size) / l
+        cpu_pipe = (compressed_weight_size +  compressed_kv_cache_size) / l * 3 + act_pipe
         cpu_mem = (w_c * compressed_weight_size + 
                 c_c * compressed_kv_cache_size + 
                 h_c * act_size + 
-                cpu_buf) * safety_margin
+                cpu_pipe) * safety_margin
                 
         return gpu_mem, cpu_mem
