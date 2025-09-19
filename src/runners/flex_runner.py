@@ -1,6 +1,5 @@
 import os
 import time
-import sys
 import logging
 import torch
 import argparse
@@ -12,19 +11,13 @@ from typing import List
 from transformers import AutoTokenizer
 from types import SimpleNamespace
 
-from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder
+from flexllmgen.flex_opt import OptLM, Policy, SelfAttention, InputEmbed, MLP, OutputEmbed, ValueHolder, CompressionConfig
 from flexllmgen.pytorch_backend import TorchDevice, TorchDisk, TorchMixedDevice
 from flexllmgen.utils import ExecutionEnv
 from flexllmgen.opt_config import get_opt_config
 from src.auto_policy.profiler import get_hardware_profile
 from src.auto_policy.optimizer import Optimizer
 from src.utils.memory import calc_mem_per_device     
-
-# Add the FlexLLMGen submodule to the Python path
-flexllmgen_path = os.path.abspath("./FlexLLMGen")
-if flexllmgen_path not in sys.path:
-    sys.path.insert(0, flexllmgen_path)
-from flexllmgen.flex_opt import Policy, CompressionConfig
 
 logger = logging.getLogger(__name__)
 

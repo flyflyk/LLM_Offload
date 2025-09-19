@@ -8,3 +8,4 @@ attrs==25.3.0
 psutil==7.0.0
 PyYAML==6.0.2
 bitsandbytes==0.47.0
+memory-profiler==0.61.0

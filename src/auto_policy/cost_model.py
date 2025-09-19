@@ -94,8 +94,6 @@ class CostModel:
         total_seq_len = s + n
 
         # --- Memory Components ---
-        safety_margin = 1.0
-
         # 1. Resident Sizes
         weight_size = (4 * h1**2 + 2 * h1 * h2) * 2 * l
         kv_cache_size = 2 * l * total_seq_len * h1 * 2 * batch_size
@@ -103,8 +101,8 @@ class CostModel:
         attn_mask_size = batch_size * total_seq_len
 
         # 2. Pipelines
-        w_pipe = weight_size / l * 3 # j-1, j, j+1
-        kv_pipe = kv_cache_size / l * 3
+        w_pipe = weight_size / l * 2 # j, j+1
+        kv_pipe = kv_cache_size / l * 2
         act_pipe = (total_seq_len * h1 * 2 * batch_size) + (total_seq_len * h2 * 2 * batch_size)
         gpu_pipe = w_pipe + kv_pipe + act_pipe
 
@@ -121,15 +119,15 @@ class CostModel:
                 h_g * act_size +
                 attn_mask_size +
                 gpu_pipe +      
-                mha_buf) * safety_margin
+                mha_buf)
 
         # --- CPU Memory Calculation ---
         compressed_weight_size = weight_size if not compress_weight else weight_size * 0.25
         compressed_kv_cache_size = kv_cache_size if not compress_cache else kv_cache_size * 0.25
-        cpu_pipe = (compressed_weight_size +  compressed_kv_cache_size) / l * 3 + act_pipe
+        cpu_pipe = (compressed_weight_size +  compressed_kv_cache_size) / l * 2 + act_pipe
         cpu_mem = (w_c * compressed_weight_size + 
                 c_c * compressed_kv_cache_size + 
                 h_c * act_size + 
-                cpu_pipe) * safety_margin
+                cpu_pipe)
                 
         return gpu_mem, cpu_mem
