@@ -1,6 +1,8 @@
+import sys
 import os
 from memory_profiler import profile
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 @profile
