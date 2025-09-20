@@ -7,9 +7,6 @@ import yaml
 import warnings
 from types import SimpleNamespace
 
-# Suppress the specific UserWarning from FlexLLMGen about non-tuple indexing
-warnings.filterwarnings("ignore", category=UserWarning, message=".*Using a non-tuple sequence for multidimensional indexing.*")
-
 from src.utils.logger import setup_logging
 from src.runners.accelerate_runner import AccelerateRunner
 from src.runners.flex_runner import FlexRunner
@@ -19,6 +16,8 @@ from accelerate import infer_auto_device_map
 from transformers import AutoModelForCausalLM
 from src.utils.prompts import generate_prompt
 from flexllmgen.opt_config import get_opt_config
+
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Using a non-tuple sequence for multidimensional indexing.*")
 
 def load_config(mode) -> SimpleNamespace:
     config_path = f"src/configs/{mode}.yaml"
@@ -56,12 +55,9 @@ def run_accelerate_mode(args) -> dict:
     )
     prompt_text = generate_prompt(args.input_len, runner.tokenizer)
     prompts = [prompt_text] * args.batch_size
-
     result = runner.run_accelerate(prompts, max_new_tokens=args.gen_len)
-    
     total_tokens = args.batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
-
     log_metrics(
         framework="Accelerate",
         throughput=throughput,
@@ -94,15 +90,12 @@ def run_flex_mode(args, use_autoflex=False) -> dict:
     batch_size = runner.policy.gpu_batch_size
     prompt = generate_prompt(args.input_len, runner.tokenizer)
     prompts = [prompt] * batch_size
-
     result = runner.run(prompts, input_len=args.input_len, max_new_tokens=args.gen_len)
 
     # Get policy and allocation info
     policy_info = runner.get_policy_info()
     allocation_info = runner.get_model_info()
-
     runner.cleanup()
-
     total_tokens = batch_size * args.gen_len
     throughput = total_tokens / result["inference_time"] if result["inference_time"] > 0 else 0
 
@@ -167,9 +160,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=2, help="The number of prompts to process in a batch.")
     parser.add_argument("--offload-dir", type=str, default="/mnt/ssd/offload_dir", help="The common directory for offloading tensors to disk.")
     parser.add_argument("--log-file", type=str, default="logs/log", help="Path to the log file.")
-
     args = parser.parse_args()
-
     if args.mode == 'accelerate':
         run_accelerate_mode(args)
     elif args.mode == 'flexgen':

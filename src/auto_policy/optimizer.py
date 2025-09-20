@@ -1,16 +1,17 @@
 import pulp
 import itertools
+from typing import Optional
 from flexllmgen.flex_opt import Policy, CompressionConfig
 from src.auto_policy.cost_model import CostModel
 from src.auto_policy.profiler import HardwareProfile
 
 class Optimizer:
-    def __init__(self, model_config, hardware: HardwareProfile, input_len: int, gen_len: int):
+    def __init__(self, model_config, hardware: HardwareProfile, input_len: int, gen_len: int) -> None:
         self.cost_model = CostModel(model_config, hardware, input_len, gen_len)
         self.gpu_capacity = hardware.gpu_mem
         self.cpu_capacity = hardware.cpu_mem
 
-    def search(self):
+    def search(self) -> Optional[Policy]:
         best_policy = None
         min_latency = float('inf')
 

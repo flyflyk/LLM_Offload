@@ -149,7 +149,7 @@ class FlexRunner:
             self.env.close_copy_threads()
         logger.info("[FlexGen] Resources cleaned up.")
     
-    def create_policy(self, args: argparse.Namespace, use_autoflex: bool):
+    def create_policy(self, args: argparse.Namespace, use_autoflex: bool) -> Policy:
         policy = None
         if use_autoflex:
             logger.info("Finding optimal policy for AutoFlex...")

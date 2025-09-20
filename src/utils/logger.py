@@ -14,7 +14,7 @@ LOG_LEVEL = LOG_LEVEL_MAP.get(LOG_LEVEL_STR, logging.INFO)
 LOG_FORMAT = '%(levelname)s - [%(name)s] - ln:%(lineno)d - %(message)s'
 _logger_configured = False
 
-def setup_logging(level=LOG_LEVEL, log_file=None):
+def setup_logging(level=LOG_LEVEL, log_file=None) -> None:
     global _logger_configured
     if _logger_configured:
         return

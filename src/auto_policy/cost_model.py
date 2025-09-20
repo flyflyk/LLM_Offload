@@ -77,7 +77,7 @@ class CostModel:
         total_latency = T_pre * l + T_gen * (n - 1) * l
         return total_latency
 
-    def get_peak_memory(self, policy, batch_size, compress_weight: bool, compress_cache: bool):
+    def get_peak_memory(self, policy, batch_size, compress_weight: bool, compress_cache: bool) -> tuple[pulp.LpAffineExpression, pulp.LpAffineExpression]:
         # Policy variables
         w_g, w_c, _ = policy['w_g'], policy['w_c'], policy['w_d']
         c_g, c_c, _ = policy['c_g'], policy['c_c'], policy['c_d']

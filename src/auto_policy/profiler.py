@@ -71,7 +71,7 @@ def _profile_bandwidth(device1: str, device2: str, size_mb: int = 256) -> float:
 
     return bw1, bw2
 
-def _profile_disk_bandwidth(size_mb: int = 128, tmp_dir: str = None) -> float:
+def _profile_disk_bandwidth(size_mb: int = 128, tmp_dir: str = None) -> tuple[float, float]:
     if tmp_dir and not os.path.exists(tmp_dir):
         os.makedirs(tmp_dir)
     

@@ -22,7 +22,7 @@ def log_metrics(framework: str, throughput: float, infer_time: float, model_load
     logger.info(f"Throughput: {throughput:.2f} tokens/sec")
     logger.info(f"--- Execution Finished Successfully ({framework}) ---")
 
-def cleanup_mem():
+def cleanup_mem() -> None:
     print("--- Cleaning up VRAM before next test ---")
     gc.collect()
     torch.cuda.empty_cache()
