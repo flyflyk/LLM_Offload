@@ -176,7 +176,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     
     # Profile memory
     _, gpu_mem = torch.cuda.mem_get_info(0)
-    cpu_mem = psutil.virtual_memory().available
+    cpu_mem = psutil.virtual_memory().available * 0.9
 
     # Profile bandwidth (Bytes/s)
     logger.info("Profiling CPU<->GPU bandwidth...")
