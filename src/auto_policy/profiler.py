@@ -175,7 +175,26 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     logger.info("Running hardware profiling... (This may take a moment)")
     
     # Profile memory
-    _, gpu_mem = torch.cuda.mem_get_info(0)
+    if torch.cuda.is_available():
+        # Init context to measure overhead
+        torch.cuda.set_device(0)
+        _ = torch.tensor([1.0]).cuda() # Dummy tensor to trigger init
+        torch.cuda.synchronize()
+        
+        context_overhead = torch.cuda.memory_allocated()
+        total_gpu_mem = torch.cuda.get_device_properties(0).total_memory
+        gpu_mem = total_gpu_mem - context_overhead
+        
+        logger.info(f"Total GPU Memory: {total_gpu_mem / 1024**3:.2f} GB")
+        logger.info(f"CUDA Context Overhead: {context_overhead / 1024**2:.2f} MB")
+        logger.info(f"Usable GPU Memory for Optimizer: {gpu_mem / 1024**3:.2f} GB")
+        
+        # Clean up the dummy tensor and clear cache
+        del _
+        torch.cuda.empty_cache()
+    else:
+        gpu_mem = 0
+
     cpu_mem = psutil.virtual_memory().available * 0.9
 
     # Profile bandwidth (Bytes/s)
