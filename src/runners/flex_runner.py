@@ -144,14 +144,17 @@ class FlexRunner:
             outputs = self.model.generate(input_ids_batch, max_new_tokens=max_new_tokens)
         end_time = time.time()
         
-        # Get peak memory usage
+        # Get peak memory
         if torch.cuda.is_available():
             peak_gpu_mem_actual = torch.cuda.max_memory_allocated() / (1024**3)
-            logger.info(f"Predicted peak GPU memory: {self.predict_gpu_mem:.4f} GB")
+            predict_gpu_mem = self.predict_gpu_mem / (1024**3)
+            logger.info(f"Predicted peak GPU memory: {predict_gpu_mem:.4f} GB")
             logger.info(f"Actual peak GPU memory:    {peak_gpu_mem_actual:.4f} GB")
+
         peak_cpu_mem = process.memory_info().rss
         peak_cpu_mem_actual = (peak_cpu_mem - init_cpu_mem) / (1024**3)
-        logger.info(f"Predicted peak CPU memory: {self.predict_cpu_mem:.4f} GB")
+        predict_cpu_mem = self.predict_cpu_mem / (1024**3)
+        logger.info(f"Predicted peak CPU memory: {predict_cpu_mem:.4f} GB")
         logger.info(f"Actual peak CPU memory:    {peak_cpu_mem_actual:.4f} GB")
         
         inference_time = end_time - start_time
