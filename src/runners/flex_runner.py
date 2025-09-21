@@ -26,6 +26,8 @@ class FlexRunner:
         self.model_name = model_name
         self.config = config
         self.force_rerun = force_rerun
+        self.predict_gpu_mem = 0
+        self.predict_cpu_mem = 0
         self.policy = self.create_policy(args, use_autoflex)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
         self.model = None
@@ -130,9 +132,27 @@ class FlexRunner:
         input_ids_batch = tokenized_prompts
 
         start_time = time.time()
+        
+        # Reset memory stats and get initial CPU memory usage
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+        process = psutil.Process(os.getpid())
+        init_cpu_mem = process.memory_info().rss
+        peak_cpu_mem = init_cpu_mem
+
         with torch.no_grad():
             outputs = self.model.generate(input_ids_batch, max_new_tokens=max_new_tokens)
         end_time = time.time()
+        
+        # Get peak memory usage
+        if torch.cuda.is_available():
+            peak_gpu_mem_actual = torch.cuda.max_memory_allocated() / (1024**3)
+            logger.info(f"Predicted peak GPU memory: {self.predict_gpu_mem:.4f} GB")
+            logger.info(f"Actual peak GPU memory:    {peak_gpu_mem_actual:.4f} GB")
+        peak_cpu_mem = process.memory_info().rss
+        peak_cpu_mem_actual = (peak_cpu_mem - init_cpu_mem) / (1024**3)
+        logger.info(f"Predicted peak CPU memory: {self.predict_cpu_mem:.4f} GB")
+        logger.info(f"Actual peak CPU memory:    {peak_cpu_mem_actual:.4f} GB")
         
         inference_time = end_time - start_time
 
@@ -161,20 +181,19 @@ class FlexRunner:
                 input_len=args.input_len, 
                 gen_len=args.gen_len
             )
-            policy = optimizer.search()
+            policy, self.predict_gpu_mem, self.predict_cpu_mem = optimizer.search()
             physical_cores = psutil.cpu_count(logical=False)
             num_threads = int(max(min(physical_cores / 2, 4), 1))
             if policy is None:
                 raise RuntimeError("Failed to find an optimal policy.")
             self.config.num_copy_threads = num_threads
             
-            # Print the detailed policy object
+            # Print policy object
             policy_dict = dataclasses.asdict(policy)
             logger.info("--- Optimal Policy Details ---")
             logger.info(json.dumps(policy_dict, indent=4))
             logger.info("------------------------------")
         else:
-            # Validate policy percentages
             if self.config.w_gpu_percent + self.config.w_cpu_percent > 100:
                 raise ValueError("Weight GPU and CPU percentages cannot sum to more than 100.")
             if self.config.cache_gpu_percent + self.config.cache_cpu_percent > 100:

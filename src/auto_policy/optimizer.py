@@ -15,11 +15,11 @@ class Optimizer:
         best_policy = None
         min_latency = float('inf')
 
-        # Iterate through batch sizes first
+        # Iterate possible batch sizes
         for bs in itertools.count(start=4, step=4):
             oom_count_for_bs = 0
 
-            # Then iterate through compression strategies
+            # Iterate compression strategies
             for compress_weight, compress_cache in [
                 (False, False),
                 (False, True),
@@ -27,7 +27,6 @@ class Optimizer:
                 (True, True),
             ]:
                 prob = pulp.LpProblem(f"Policy_Search_bs_{bs}_cw_{compress_weight}_cc_{compress_cache}", pulp.LpMinimize)
-                
                 w_vars = {
                     'w_g': pulp.LpVariable("w_g", 0, 1),
                     'w_c': pulp.LpVariable("w_c", 0, 1),
@@ -76,6 +75,10 @@ class Optimizer:
                 if current_latency < min_latency:
                     min_latency = current_latency
                     solved_p = {v.name: v.varValue for v in prob.variables()}
+                    gpu_peak_mem, cpu_peak_mem = self.cost_model.get_peak_memory(
+                        {k: solved_p.get(k, 0) for k in p.keys()}, bs, compress_weight, compress_cache
+                    )
+                                    
                     best_policy = Policy(
                         gpu_batch_size=bs,
                         num_gpu_batches=1,
@@ -95,10 +98,13 @@ class Optimizer:
                         compress_cache=compress_cache,
                         comp_cache_config=CompressionConfig(num_bits=4, group_size=64, group_dim=2, symmetric=False),
                     )
-
-            # If all compression strategies resulted in OOM for this batch size, stop.
+                
+            # If all compression strategies result in OOM for this batch size, stop.
             if oom_count_for_bs == 4:
-                print(f"Stopping search at batch size {bs} as all configurations resulted in OOM.")
+                print(f"Stopping search at batch size {bs} as all configs resulted in OOM.")
                 break
-
-        return best_policy
+                        
+        if best_policy:
+            return best_policy, pulp.value(gpu_peak_mem), pulp.value(cpu_peak_mem)
+        
+        return None, None, None
