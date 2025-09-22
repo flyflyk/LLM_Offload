@@ -57,9 +57,10 @@ class Optimizer:
                 total_latency = self.cost_model.estimate_latency(prob, p, bs, compress_weight, compress_cache)
                 prob += total_latency / bs
                 
-                gpu_mem, cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
+                gpu_mem, load_cpu_mem, inf_cpu_mem = self.cost_model.get_peak_memory(p, bs, compress_weight, compress_cache)
                 prob += gpu_mem <= self.gpu_capacity, "GPU_Memory_Constraint"
-                prob += cpu_mem <= self.cpu_capacity, "CPU_Memory_Constraint"
+                prob += load_cpu_mem <= self.cpu_capacity, "CPU_Load_Memory_Constraint"
+                prob += inf_cpu_mem <= self.cpu_capacity, "CPU_Inf_Memory_Constraint"
                 
                 prob += p['w_g'] + p['w_c'] + p['w_d'] == 1, "Weight_Sum_Constraint"
                 prob += p['c_g'] + p['c_c'] + p['c_d'] == 1, "Cache_Sum_Constraint"
@@ -75,7 +76,7 @@ class Optimizer:
                 if current_latency < min_latency:
                     min_latency = current_latency
                     solved_p = {v.name: v.varValue for v in prob.variables()}
-                    gpu_peak_mem, cpu_peak_mem = self.cost_model.get_peak_memory(
+                    gpu_peak_mem, cpu_load_peak_mem, cpu_inf_peak_mem = self.cost_model.get_peak_memory(
                         {k: solved_p.get(k, 0) for k in p.keys()}, bs, compress_weight, compress_cache
                     )
                                     
@@ -105,6 +106,6 @@ class Optimizer:
                 break
                         
         if best_policy:
-            return best_policy, pulp.value(gpu_peak_mem), pulp.value(cpu_peak_mem)
+            return best_policy, pulp.value(gpu_peak_mem), pulp.value(cpu_load_peak_mem), pulp.value(cpu_inf_peak_mem)
         
-        return None, None, None
+        return None, None, None, None

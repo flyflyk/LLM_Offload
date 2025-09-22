@@ -77,7 +77,7 @@ class CostModel:
         total_latency = T_pre * l + T_gen * (n - 1) * l
         return total_latency
 
-    def get_peak_memory(self, policy, batch_size, compress_weight: bool, compress_cache: bool) -> tuple[pulp.LpAffineExpression, pulp.LpAffineExpression]:
+    def get_peak_memory(self, policy, batch_size, compress_weight: bool, compress_cache: bool) -> tuple[pulp.LpAffineExpression, pulp.LpAffineExpression, pulp.LpAffineExpression]:
         # Policy variables
         w_g, w_c, _ = policy['w_g'], policy['w_c'], policy['w_d']
         c_g, c_c, _ = policy['c_g'], policy['c_c'], policy['c_d']
@@ -122,13 +122,19 @@ class CostModel:
                 mha_buf)
 
         # --- CPU Memory Calculation ---
+        # Load session
+        load_cpu_mem = w_c * weight_size + weight_size / l
+
+        # Inference session
+        if compress_weight:
+            weight_size *= 0.25
         if compress_cache:
             kv_cache_size *= 0.25
         kv_pipe = kv_cache_size / l * 2 # j, j+1
         cpu_pipe = w_pipe + kv_pipe + act_pipe
-        cpu_mem = (w_c * weight_size + 
+        inf_cpu_mem = (w_c * weight_size + 
                 c_c * kv_cache_size + 
                 h_c * act_size + 
                 cpu_pipe)
                 
-        return gpu_mem, cpu_mem
+        return gpu_mem, load_cpu_mem, inf_cpu_mem

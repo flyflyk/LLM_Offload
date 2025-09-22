@@ -171,7 +171,8 @@ class FlexRunner:
                 input_len=args.input_len, 
                 gen_len=args.gen_len
             )
-            policy, self.predict_gpu_mem, self.predict_cpu_mem = optimizer.search()
+            policy, self.predict_gpu_mem, self.predict_load_cpu_mem, self.predict_inf_cpu_mem = optimizer.search()
+            self.predict_cpu_mem = max(self.predict_load_cpu_mem, self.predict_inf_cpu_mem)
             physical_cores = psutil.cpu_count(logical=False)
             num_threads = int(max(min(physical_cores / 2, 4), 1))
             if policy is None:
