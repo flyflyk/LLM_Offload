@@ -74,11 +74,8 @@ def main():
     # --- Final Report ---
     print("-" * 60)
     print("--- Memory Usage Report ---")
-    print(f"  Peak CPU Memory: {peak_cpu_memory / 1024 / 1024:.2f} MB")
-    if peak_gpu_memory > 0:
-        print(f"  Peak GPU Memory: {peak_gpu_memory / 1024 / 1024:.2f} MB")
-    else:
-        print("  Peak GPU Memory: Not detected or monitoring failed")
+    print(f"  Peak CPU Memory: {peak_cpu_memory / 1024 / 1024 / 1024:.2f} GB")
+    print(f"  Peak GPU Memory: {peak_gpu_memory / 1024 / 1024 / 1024:.2f} GB")
     print("---------------------------")
 
 
