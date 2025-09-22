@@ -51,11 +51,10 @@ class Optimizer:
 
                 # Memory constraints
                 gpu_peak_exprs, cpu_peak_exprs, nvme_peak_expr = self.cost_model.get_peak_memory(p, bs)
-                safety_margin = 1.2
                 for i, expr in enumerate(gpu_peak_exprs):
-                    prob += expr * safety_margin <= self.gpu_capacity, f"GPU_Memory_Constraint_{i}"
+                    prob += expr <= self.gpu_capacity, f"GPU_Memory_Constraint_{i}"
                 for i, expr in enumerate(cpu_peak_exprs):
-                    prob += expr * safety_margin <= self.cpu_capacity, f"CPU_Memory_Constraint_{i}"
+                    prob += expr <= self.cpu_capacity, f"CPU_Memory_Constraint_{i}"
                 # Not using NVMe currently
                 _ = nvme_peak_expr
 
