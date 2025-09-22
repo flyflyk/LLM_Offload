@@ -13,6 +13,9 @@ class Optimizer:
     def search(self):
         best_policy = None
         min_latency = float('inf')
+        best_gpu_peak_exprs = None
+        best_cpu_peak_exprs = None
+
         for bs in itertools.count(start=4, step=4):
             oom_cnt = 0
             for compress_weight, compress_cache in [
@@ -65,20 +68,14 @@ class Optimizer:
                 
                 # Solve the LP
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
-
-                # Print estimated peak memory
-                if prob.status == pulp.LpStatusOptimal:
-                    gpu_peak_mem = max([pulp.value(expr) for expr in gpu_peak_exprs])
-                    cpu_peak_mem = max([pulp.value(expr) for expr in cpu_peak_exprs])
-                    print(f"  - Estimated GPU Peak Memory: {gpu_peak_mem / 1024**3:.2f} GB")
-                    print(f"  - Estimated CPU Peak Memory: {cpu_peak_mem / 1024**3:.2f} GB")
-
                 if pulp.LpStatus[prob.status] != 'Optimal':
                     oom_cnt += 1
                     continue
                 current_latency = pulp.value(prob.objective)
                 if current_latency < min_latency:
                     min_latency = current_latency
+                    best_gpu_peak_exprs = gpu_peak_exprs
+                    best_cpu_peak_exprs = cpu_peak_exprs
                     solved_p = {v.name: v.varValue for v in prob.variables()}
                     best_policy = Policy(
                         gpu_batch_size=bs,
@@ -104,5 +101,12 @@ class Optimizer:
             if oom_cnt == 4:
                 print(f"Stopping search at batch size {bs} as all configurations resulted in OOM.")
                 break
+        
+        if best_policy:
+            gpu_peak_mem = max([pulp.value(expr) for expr in best_gpu_peak_exprs])
+            cpu_peak_mem = max([pulp.value(expr) for expr in best_cpu_peak_exprs])
+            print("\n--- Optimal Policy Found ---")
+            print(f"Estimated GPU Peak Memory: {gpu_peak_mem / 1024**3:.2f} GB")
+            print(f"Estimated CPU Peak Memory: {cpu_peak_mem / 1024**3:.2f} GB")
 
         return best_policy
