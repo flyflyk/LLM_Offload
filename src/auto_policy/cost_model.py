@@ -122,7 +122,13 @@ class CostModel:
                 mha_buf)
 
         # --- CPU Memory Calculation ---
-        cpu_pipe = gpu_pipe
+        if compress_weight:
+            weight_size *= 0.25
+        if compress_cache:
+            kv_cache_size *= 0.25
+        w_pipe = weight_size / l * 2 # j, j+1
+        kv_pipe = kv_cache_size / l * 2
+        cpu_pipe = w_pipe + kv_pipe + act_pipe
         cpu_mem = (w_c * weight_size + 
                 c_c * kv_cache_size + 
                 h_c * act_size + 
