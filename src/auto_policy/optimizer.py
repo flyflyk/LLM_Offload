@@ -65,6 +65,14 @@ class Optimizer:
                 
                 # Solve the LP
                 prob.solve(pulp.PULP_CBC_CMD(msg=0))
+
+                # Print estimated peak memory
+                if prob.status == pulp.LpStatusOptimal:
+                    gpu_peak_mem = max([pulp.value(expr) for expr in gpu_peak_exprs])
+                    cpu_peak_mem = max([pulp.value(expr) for expr in cpu_peak_exprs])
+                    print(f"  - Estimated GPU Peak Memory: {gpu_peak_mem / 1024**3:.2f} GB")
+                    print(f"  - Estimated CPU Peak Memory: {cpu_peak_mem / 1024**3:.2f} GB")
+
                 if pulp.LpStatus[prob.status] != 'Optimal':
                     oom_cnt += 1
                     continue
