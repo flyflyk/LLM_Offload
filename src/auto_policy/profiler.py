@@ -200,7 +200,7 @@ def get_hardware_profile(profile_path: str = "hardware_profile.json", force_reru
     else:
         gpu_mem = 0
 
-    cpu_mem = psutil.virtual_memory().available * 0.9
+    cpu_mem = psutil.virtual_memory().available * 0.8
 
     # Profile bandwidth (Bytes/s)
     logger.info("Profiling CPU<->GPU bandwidth...")
