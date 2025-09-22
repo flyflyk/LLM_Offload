@@ -132,13 +132,6 @@ class FlexRunner:
         input_ids_batch = tokenized_prompts
 
         start_time = time.time()
-        
-        # Reset memory stats and get initial CPU memory usage
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-        process = psutil.Process(os.getpid())
-        init_cpu_mem = process.memory_info().rss
-        peak_cpu_mem = init_cpu_mem
 
         with torch.no_grad():
             outputs = self.model.generate(input_ids_batch, max_new_tokens=max_new_tokens)
@@ -146,16 +139,10 @@ class FlexRunner:
         
         # Get peak memory
         if torch.cuda.is_available():
-            peak_gpu_mem_actual = torch.cuda.max_memory_allocated() / (1024**3)
             predict_gpu_mem = self.predict_gpu_mem / (1024**3)
             logger.info(f"Predicted peak GPU memory: {predict_gpu_mem:.4f} GB")
-            logger.info(f"Actual peak GPU memory:    {peak_gpu_mem_actual:.4f} GB")
-
-        peak_cpu_mem = process.memory_info().rss
-        peak_cpu_mem_actual = (peak_cpu_mem - init_cpu_mem) / (1024**3)
         predict_cpu_mem = self.predict_cpu_mem / (1024**3)
         logger.info(f"Predicted peak CPU memory: {predict_cpu_mem:.4f} GB")
-        logger.info(f"Actual peak CPU memory:    {peak_cpu_mem_actual:.4f} GB")
         
         inference_time = end_time - start_time
 
