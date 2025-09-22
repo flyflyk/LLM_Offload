@@ -9,4 +9,4 @@ psutil==7.0.0
 PyYAML==6.0.2
 bitsandbytes==0.47.0
 memory-profiler==0.61.0
-pynvml-nvml-bindings==6.0.0
+pynvml==11.5.0
