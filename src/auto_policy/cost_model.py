@@ -36,17 +36,13 @@ class CostModel:
 
         # Component sizes
         weight_size_one_layer = (8 * h1**2 + 4 * h1 * h2)
-        if compress_weight:
-            weight_size_one_layer *= 0.25
-        cache_compression_factor = 0.25 if compress_cache else 1.0
 
         # --- T_pre ---
         T_pre = pulp.LpVariable(f"T_pre_bs{batch_size}_cw{compress_weight}_cc{compress_cache}", 0)
-
         ctog_p = ((w_c + w_d) * weight_size_one_layer + 2 * (h_c + h_d) * s * h1 * bls) / ctog_bdw
-        gtoc_p = (4 * (c_c + c_d) * (s + 1) * h1 * bls * cache_compression_factor + 2 * (h_c + h_d) * s * h1 * bls) / gtoc_bdw
+        gtoc_p = (4 * (c_c + c_d) * (s + 1) * h1 * bls + 2 * (h_c + h_d) * s * h1 * bls) / gtoc_bdw
         dtoc_p = (w_d * weight_size_one_layer + 2 * h_d * s * h1 * bls) / dtoc_bdw
-        ctod_p = (4 * c_d * bls * (s + 1) * h1 * cache_compression_factor + 2 * h_d * s * h1 * bls) / ctod_bdw
+        ctod_p = (4 * c_d * bls * (s + 1) * h1 + 2 * h_d * s * h1 * bls) / ctod_bdw
         comp_p = (bls * (8 * s * h1**2 + 4 * s * h1 * h2)) / mm_flops + (4 * bls * s**2 * h1) / bmm_flops
 
         prob += T_pre >= ctog_p, f"T_pre_ctog_p_{batch_size}_c{compress_weight}_{compress_cache}"
@@ -60,8 +56,8 @@ class CostModel:
 
         ctog_g = ((w_c + w_d) * weight_size_one_layer + 2 * (h_c + h_d) * h1 * bls) / ctog_bdw
         gtoc_g = (2 * (h_c + h_d) * h1 * bls) / gtoc_bdw
-        dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 * cache_compression_factor + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
-        ctod_g = (4 * c_d * bls * h1 * cache_compression_factor + 2 * h_d * h1 * bls) / ctod_bdw
+        dtoc_g = (4 * c_d * bls * (s + n / 2) * h1 + w_d * weight_size_one_layer + 2 * h_d * h1 * bls) / dtoc_bdw
+        ctod_g = (4 * c_d * bls * h1 + 2 * h_d * h1 * bls) / ctod_bdw
         gpu_comp_g = (bls * (8 * h1**2 + 4 * h1 * h2)) / mm_flops + (4 * c_g * bls * (s + n / 2) * h1) / bmm_flops
         #cpu_comp_g = (4*(c_c + c_d) * bls * (s + n / 2) * h1) / cpu_tflops
 
