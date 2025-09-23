@@ -26,7 +26,7 @@ def estimate_peak_memory(args):
     try:
         with open("hardware_profile.json", "r") as f:
             hardware_data = json.load(f)
-        hardware_profile = HardwareProfile(hardware_data)
+        hardware_profile = HardwareProfile(**hardware_data)
     except FileNotFoundError:
         print("Error: hardware_profile.json not found. Please run the profiler first.", file=sys.stderr)
         sys.exit(1)
